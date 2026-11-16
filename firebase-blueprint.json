@@ -6,7 +6,7 @@
       "type": "object",
       "properties": {
         "userId": { "type": "string", "description": "Firebase Auth UID of the member" },
-        "memberCode": { "type": "string", "description": "Unique human-readable club ID such as APX-1042" },
+        "memberCode": { "type": "string", "description": "Unique human-readable club ID such as GP-1042" },
         "fullName": { "type": "string" },
         "phone": { "type": "string" },
         "email": { "type": "string" },
@@ -167,7 +167,10 @@
         "dateLabel": { "type": "string" },
         "category": { "type": "string", "enum": ["IMPORTANT", "EVENT", "COMPETITION"] },
         "isImportant": { "type": "boolean" },
+        "isPublished": { "type": "boolean" },
+        "scheduledAtLabel": { "type": "string" },
         "imageKey": { "type": "string" },
+        "imageData": { "type": "string" },
         "ctaLabel": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -184,7 +187,11 @@
         "rotationWindowSeconds": { "type": "integer" },
         "gymLatitude": { "type": "number" },
         "gymLongitude": { "type": "number" },
-        "allowedRadiusMeters": { "type": "number" }
+        "allowedRadiusMeters": { "type": "number" },
+        "isQrEnabled": { "type": "boolean" },
+        "allowStaticFallback": { "type": "boolean" },
+        "qrVersion": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["gymId", "gymName", "staticEntranceCode", "rotationWindowSeconds"]
     },
@@ -213,6 +220,86 @@
         "releaseHighlights": { "type": "array" }
       },
       "required": ["latestVersion", "releaseDate", "releaseHighlights"]
+    },
+    "CompetitionConfig": {
+      "title": "CompetitionConfig",
+      "description": "Admin-managed competition periods, goals, and prize rewards.",
+      "type": "object",
+      "properties": {
+        "categoryId": { "type": "string" },
+        "title": { "type": "string" },
+        "periodLabel": { "type": "string" },
+        "targetDescription": { "type": "string" },
+        "targetValue": { "type": "integer" },
+        "rewardTitle": { "type": "string" },
+        "rewardDescription": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["categoryId", "title", "periodLabel", "targetDescription", "targetValue", "rewardTitle", "isActive", "updatedAt"]
+    },
+    "PromotionalOffer": {
+      "title": "PromotionalOffer",
+      "description": "Admin-published membership or nutrition promotional offers displayed cleanly to members.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "badgeText": { "type": "string" },
+        "discountCode": { "type": "string" },
+        "validUntilLabel": { "type": "string" },
+        "targetAudience": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "subtitle", "badgeText", "validUntilLabel", "targetAudience", "isActive", "createdAt"]
+    },
+    "BroadcastNotification": {
+      "title": "BroadcastNotification",
+      "description": "Admin broadcast notifications and alerts synced to members.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["GENERAL", "MEMBERSHIP_REMINDER", "COMPETITION", "IMPORTANT_UPDATE", "SPECIAL_OFFER"] },
+        "audience": { "type": "string", "enum": ["ALL_MEMBERS", "ACTIVE_MEMBERS", "EXPIRING_SOON", "OVERDUE"] },
+        "isUrgent": { "type": "boolean" },
+        "createdByAdminUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "type", "audience", "isUrgent", "createdByAdminUid", "createdAt"]
+    },
+    "QrSecurityEvent": {
+      "title": "QrSecurityEvent",
+      "description": "Failed, expired, duplicate, or out-of-range entrance QR scan alert for admin review.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "memberCode": { "type": "string" },
+        "eventType": { "type": "string", "enum": ["EXPIRED_TOKEN", "OUT_OF_RANGE", "INVALID_CODE", "DUPLICATE_SCAN", "QR_DISABLED"] },
+        "reason": { "type": "string" },
+        "rawCodePrefix": { "type": "string" },
+        "distanceMeters": { "type": "number" },
+        "reviewed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "memberName", "eventType", "reason", "reviewed", "createdAt"]
+    },
+    "AdminAuditLog": {
+      "title": "AdminAuditLog",
+      "description": "Immutable audit log capturing every critical admin operation.",
+      "type": "object",
+      "properties": {
+        "adminUserId": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "actionType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "summary": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminUserId", "adminEmail", "actionType", "targetId", "summary", "createdAt"]
     }
   },
   "firestore": {
@@ -267,6 +354,26 @@
     "/app_config/{docId}": {
       "schema": { "$ref": "#/entities/AppConfigDoc" },
       "description": "Remote app update metadata"
+    },
+    "/competition_configs/{categoryId}": {
+      "schema": { "$ref": "#/entities/CompetitionConfig" },
+      "description": "Competition schedules, targets, and rewards configured by admins"
+    },
+    "/promotional_offers/{offerId}": {
+      "schema": { "$ref": "#/entities/PromotionalOffer" },
+      "description": "Active promotional offers published by admins"
+    },
+    "/notifications_broadcast/{notifId}": {
+      "schema": { "$ref": "#/entities/BroadcastNotification" },
+      "description": "Club-wide or targeted broadcast notifications"
+    },
+    "/qr_security_events/{eventId}": {
+      "schema": { "$ref": "#/entities/QrSecurityEvent" },
+      "description": "Suspicious or rejected entrance QR scan events"
+    },
+    "/admin_audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AdminAuditLog" },
+      "description": "Immutable log of admin mutations"
     }
   }
 }

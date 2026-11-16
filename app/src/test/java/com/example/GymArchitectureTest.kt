@@ -5,19 +5,26 @@ import com.example.database.AttendanceRecordDoc
 import com.example.database.DailyFoodLogDoc
 import com.example.database.LeaderboardStatDoc
 import com.example.database.MembershipRecordDoc
+import com.example.integration.StandardGymSyncBridge
+import com.example.models.AdminOverviewPeriod
 import com.example.models.DataSourceType
 import com.example.models.LeaderboardCategory
+import com.example.models.MemberActivitySegment
 import com.example.models.MembershipStatus
 import com.example.models.NutritionChartPeriod
 import com.example.services.SampleGymData
+import com.example.utils.AdminAnalyticsEngine
 import com.example.utils.AvatarUtils
 import com.example.utils.DateTimeUtils
+import com.example.utils.GitHubReleaseChecker
 import com.example.utils.MembershipCycleCalculator
 import com.example.utils.NutritionAnalyticsEngine
 import com.example.utils.QrAntiFraudVerifier
+import com.example.utils.QrMatrixGenerator
 import com.example.utils.QrVerificationResult
 import com.example.utils.StreakAndLeaderboardEngine
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.text.SimpleDateFormat
@@ -198,5 +205,57 @@ class GymArchitectureTest {
     fun `avatar initials extraction handles full and single names`() {
         assertEquals("JV", AvatarUtils.extractInitials("Jordan Vance"))
         assertEquals("AP", AvatarUtils.extractInitials(""))
+    }
+
+    @Test
+    fun `admin passcode SHA-256 verification accepts exact passcode and rejects wrong input`() {
+        assertTrue(AdminAnalyticsEngine.verifyAdminPasscode("waliandsons326842"))
+        assertFalse(AdminAnalyticsEngine.verifyAdminPasscode("wrongpasscode"))
+        assertFalse(AdminAnalyticsEngine.verifyAdminPasscode(""))
+    }
+
+    @Test
+    fun `qr matrix generator builds square ISO module grid for entrance code`() {
+        val payload = QrAntiFraudVerifier.generateRotatingEntrancePayload()
+        val matrix = QrMatrixGenerator.encode(payload)
+        assertTrue(matrix.size >= 21)
+        assertEquals(matrix.size, matrix.first().size)
+    }
+
+    @Test
+    fun `external gym sync bridge exports and deduplicates CSV and JSON bundles`() {
+        val bridge = StandardGymSyncBridge()
+        val csv = """
+            memberCode,fullName
+            GP-101,Jordan
+            GP-101,Jordan
+            GP-102,Elena
+        """.trimIndent()
+        val preview = bridge.previewInboundPayload(csv)
+        assertEquals("CSV Roster", preview.formatDetected)
+        assertEquals(3, preview.recordCount)
+        assertEquals(2, preview.deduplicatedIdsCount)
+    }
+
+    @Test
+    fun `github release checker parses latest APK asset and compares versions`() {
+        val sampleJson = """
+            {
+              "tag_name": "v1.2.0",
+              "published_at": "2026-11-16T10:30:00Z",
+              "html_url": "https://github.com/gymimpulse/app/releases/tag/v1.2.0",
+              "body": "- Added Admin Portal\n- Improved QR Speed",
+              "assets": [
+                { "browser_download_url": "https://github.com/gymimpulse/app/releases/download/v1.2.0/Gymimpulse-v1.2.0.apk" }
+              ]
+            }
+        """.trimIndent()
+        val parsed = GitHubReleaseChecker.parseReleaseJson(sampleJson)!!
+        assertEquals("1.2.0", parsed.version)
+        assertEquals("2026-11-16", parsed.releaseDate)
+        assertTrue(parsed.downloadUrl!!.endsWith(".apk"))
+        assertEquals(2, parsed.highlights.size)
+        assertTrue(GitHubReleaseChecker.isNewerVersion("1.2.0", "1.0.0"))
+        assertFalse(GitHubReleaseChecker.isNewerVersion("1.0.0", "1.2.0"))
     }
 }

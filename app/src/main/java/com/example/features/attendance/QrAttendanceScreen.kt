@@ -164,6 +164,18 @@ fun QrAttendanceScreen(
                 }
             }
 
+            if (!state.isQrEnabled) {
+                item {
+                    InfoCalloutBanner(
+                        title = "Entrance QR Temporarily Paused",
+                        description = "Club administration has temporarily paused entrance QR check-ins. Contact the front desk for assistance.",
+                        icon = Icons.Rounded.ErrorOutline,
+                        accentColor = semantic.alertCoral,
+                        containerColor = semantic.alertCoralContainer
+                    )
+                }
+            }
+
             // Large QR Scanner Area + CameraX Preview + Camera Permission State
             item {
                 QrScannerViewfinder(
@@ -182,23 +194,25 @@ fun QrAttendanceScreen(
             }
 
             // Optional Reception Code Entry for Desk/Accessibility Fallback
-            item {
-                OutlinedButton(
-                    onClick = {
-                        manualPayloadInput = state.expectedEntranceCode
-                        showManualCodeDialog = true
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("qr_manual_code_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.QrCode2,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text("Enter Reception Desk Code Manually")
+            if (state.allowStaticFallback && state.isQrEnabled) {
+                item {
+                    OutlinedButton(
+                        onClick = {
+                            manualPayloadInput = state.expectedEntranceCode
+                            showManualCodeDialog = true
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("qr_manual_code_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.QrCode2,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text("Enter Reception Desk Code Manually")
+                    }
                 }
             }
 

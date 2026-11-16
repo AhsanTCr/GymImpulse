@@ -2,6 +2,7 @@ package com.example.features.leaderboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.database.CompetitionConfigDoc
 import com.example.database.LeaderboardHistoryDoc
 import com.example.database.MemberFirestoreRepository
 import com.example.database.toFriendlyFirestoreMessage
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 
 data class LeaderboardUiState(
     val selectedCategory: LeaderboardCategory = LeaderboardCategory.ATTENDANCE_STREAK,
+    val activeConfig: CompetitionConfigDoc? = null,
     val entries: List<LeaderboardEntry> = emptyList(),
     val historyItems: List<LeaderboardHistoryDoc> = emptyList(),
     val isLoading: Boolean = true,
@@ -33,15 +35,20 @@ class LeaderboardViewModel(
     val uiState: StateFlow<LeaderboardUiState> = combine(
         _selectedCategory,
         repository.observeLeaderboardStats(),
-        repository.observeLeaderboardHistory().catch { emit(emptyList()) }
-    ) { category, stats, history ->
+        repository.observeLeaderboardHistory().catch { emit(emptyList()) },
+        repository.observeCompetitionConfigs().catch { emit(emptyList()) }
+    ) { category, stats, history, configs ->
         val ranked = StreakAndLeaderboardEngine.rankEntries(
             stats = stats,
             category = category,
             currentUserId = currentUserId
         )
+        val matchingConfig = configs.firstOrNull {
+            it.categoryId.equals(category.name, ignoreCase = true)
+        }
         LeaderboardUiState(
             selectedCategory = category,
+            activeConfig = matchingConfig,
             entries = ranked,
             historyItems = history,
             isLoading = false,

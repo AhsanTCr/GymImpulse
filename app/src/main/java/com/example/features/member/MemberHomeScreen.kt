@@ -26,7 +26,9 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.LocalOffer
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.Schedule
@@ -39,10 +41,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -61,6 +65,7 @@ import com.example.ui.components.QuickAccessCard
 import com.example.ui.components.RoleBadge
 import com.example.ui.components.SectionHeader
 import com.example.ui.theme.LocalGymSemanticColors
+import com.example.utils.ImageCompressionUtils
 
 @Composable
 fun MemberHomeScreen(
@@ -191,6 +196,64 @@ fun MemberHomeScreen(
                                     imageVector = Icons.Rounded.Notifications,
                                     contentDescription = stringResource(R.string.cd_notifications),
                                     tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Live Club Broadcast Alert (synced from Admin Engagement)
+            state.latestBroadcast?.let { broadcast ->
+                item {
+                    val accent = if (broadcast.isUrgent) semantic.alertCoral else semantic.infoCyan
+                    val container = if (broadcast.isUrgent) semantic.alertCoralContainer else semantic.infoCyanContainer
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("home_club_broadcast_card"),
+                        shape = MaterialTheme.shapes.large,
+                        color = container,
+                        border = BorderStroke(1.dp, accent.copy(alpha = 0.55f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.NotificationsActive,
+                                contentDescription = "Club Broadcast",
+                                tint = accent,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = if (broadcast.isUrgent) "URGENT CLUB ALERT" else "CLUB NOTICE",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = accent
+                                    )
+                                    Text(
+                                        text = "• ${broadcast.type.replace("_", " ")}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text(
+                                    text = broadcast.title,
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = broadcast.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -557,15 +620,30 @@ fun MemberHomeScreen(
                         onClick = onNavigateToAnnouncements
                     ) {
                         Column {
-                            if (ann.bannerDrawableRes != null) {
-                                Image(
-                                    painter = painterResource(id = ann.bannerDrawableRes),
-                                    contentDescription = stringResource(R.string.cd_announcement_image),
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(132.dp)
-                                )
+                            val decodedBanner = remember(ann.bannerImageData) {
+                                ann.bannerImageData?.let { ImageCompressionUtils.decodeBase64DataUri(it)?.asImageBitmap() }
+                            }
+                            when {
+                                decodedBanner != null -> {
+                                    Image(
+                                        bitmap = decodedBanner,
+                                        contentDescription = stringResource(R.string.cd_announcement_image),
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(132.dp)
+                                    )
+                                }
+                                ann.bannerDrawableRes != null -> {
+                                    Image(
+                                        painter = painterResource(id = ann.bannerDrawableRes),
+                                        contentDescription = stringResource(R.string.cd_announcement_image),
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(132.dp)
+                                    )
+                                }
                             }
                             Column(
                                 modifier = Modifier.padding(16.dp),
@@ -601,6 +679,78 @@ fun MemberHomeScreen(
                                 )
                                 Text(
                                     text = ann.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Promotional Offer Banner (synced live from Admin Offers)
+            state.activeOffer?.let { offer ->
+                item {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("home_promotional_offer_card"),
+                        shape = MaterialTheme.shapes.large,
+                        color = semantic.warningAmberContainer,
+                        border = BorderStroke(1.dp, semantic.warningAmber.copy(alpha = 0.55f)),
+                        onClick = onNavigateToMembership
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(semantic.warningAmber.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.LocalOffer,
+                                    contentDescription = "Special Club Offer",
+                                    tint = semantic.warningAmber
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = offer.badgeText.ifBlank { "CLUB OFFER" },
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = semantic.warningAmber
+                                    )
+                                    if (!offer.discountCode.isNullOrBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = MaterialTheme.colorScheme.surface
+                                        ) {
+                                            Text(
+                                                text = "CODE: ${offer.discountCode}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                Text(
+                                    text = offer.title,
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "${offer.subtitle} • Valid ${offer.validUntilLabel}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 2,

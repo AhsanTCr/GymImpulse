@@ -107,6 +107,19 @@ data class PaymentRequestDoc(
         put("isVerified", false)
         put("createdAt", FieldValue.serverTimestamp())
     }
+
+    fun toAdminResolutionMap(approved: Boolean): Map<String, Any> = buildMap {
+        put("userId", userId)
+        put("memberName", memberName)
+        put("memberCode", memberCode)
+        put("amountFormatted", amountFormatted)
+        put("paymentMethod", paymentMethod)
+        if (!referenceNote.isNullOrBlank()) put("referenceNote", referenceNote)
+        put("paymentDateLabel", paymentDateLabel)
+        put("status", if (approved) "VERIFIED" else "REJECTED")
+        put("isVerified", approved)
+        put("createdAt", createdAt ?: FieldValue.serverTimestamp())
+    }
 }
 
 @IgnoreExtraProperties
@@ -120,7 +133,18 @@ data class PaymentRecordDoc(
     val referenceNumber: String = "",
     val isVerified: Boolean = true,
     @ServerTimestamp val createdAt: Timestamp? = null
-)
+) {
+    fun toCreateMap(): Map<String, Any> = mapOf(
+        "userId" to userId,
+        "paymentDate" to paymentDate,
+        "cycleCovered" to cycleCovered,
+        "amountFormatted" to amountFormatted,
+        "method" to method,
+        "referenceNumber" to referenceNumber,
+        "isVerified" to isVerified,
+        "createdAt" to FieldValue.serverTimestamp()
+    )
+}
 
 @IgnoreExtraProperties
 data class AttendanceRecordDoc(
@@ -233,7 +257,8 @@ data class LeaderboardStatDoc(
         put("updatedAt", FieldValue.serverTimestamp())
     }
 
-    fun toOwnerUpdateMap(): Map<String, Any> = buildMap {
+    fun toAdminWriteMap(): Map<String, Any> = buildMap {
+        put("userId", userId)
         put("memberName", memberName)
         if (!avatarData.isNullOrBlank()) put("avatarData", avatarData)
         put("currentStreakDays", currentStreakDays)
@@ -241,6 +266,8 @@ data class LeaderboardStatDoc(
         put("monthlyVisits", monthlyVisits)
         put("weeklyTargetMetWeeks", weeklyTargetMetWeeks)
         put("healthyHabitsScore", healthyHabitsScore)
+        put("verifiedReferralsCount", verifiedReferralsCount)
+        put("isMonthlyWinner", isMonthlyWinner)
         put("monthKey", monthKey)
         put("updatedAt", FieldValue.serverTimestamp())
     }
@@ -253,7 +280,14 @@ data class LeaderboardHistoryDoc(
     val category: String = "",
     val winnerName: String = "",
     val scoreLabel: String = ""
-)
+) {
+    fun toWriteMap(): Map<String, Any> = mapOf(
+        "monthKey" to monthKey,
+        "category" to category,
+        "winnerName" to winnerName,
+        "scoreLabel" to scoreLabel
+    )
+}
 
 @IgnoreExtraProperties
 data class AnnouncementDoc(
@@ -263,10 +297,27 @@ data class AnnouncementDoc(
     val dateLabel: String = "",
     val category: String = "EVENT",
     val isImportant: Boolean = false,
+    val isPublished: Boolean = true,
+    val scheduledAtLabel: String? = null,
     val imageKey: String? = null,
+    val imageData: String? = null,
     val ctaLabel: String? = null,
     @ServerTimestamp val createdAt: Timestamp? = null
-)
+) {
+    fun toWriteMap(): Map<String, Any> = buildMap {
+        put("title", title)
+        put("description", description)
+        put("dateLabel", dateLabel)
+        put("category", category)
+        put("isImportant", isImportant)
+        put("isPublished", isPublished)
+        if (!scheduledAtLabel.isNullOrBlank()) put("scheduledAtLabel", scheduledAtLabel)
+        if (!imageKey.isNullOrBlank()) put("imageKey", imageKey)
+        if (!imageData.isNullOrBlank()) put("imageData", imageData)
+        if (!ctaLabel.isNullOrBlank()) put("ctaLabel", ctaLabel)
+        put("createdAt", FieldValue.serverTimestamp())
+    }
+}
 
 @IgnoreExtraProperties
 data class GymConfigDoc(
@@ -277,8 +328,26 @@ data class GymConfigDoc(
     val rotationWindowSeconds: Long = 120L,
     val gymLatitude: Double? = null,
     val gymLongitude: Double? = null,
-    val allowedRadiusMeters: Double? = null
-)
+    val allowedRadiusMeters: Double? = null,
+    val isQrEnabled: Boolean = true,
+    val allowStaticFallback: Boolean = true,
+    val qrVersion: Long = 1L,
+    @ServerTimestamp val updatedAt: Timestamp? = null
+) {
+    fun toWriteMap(): Map<String, Any> = buildMap {
+        put("gymId", gymId)
+        put("gymName", gymName)
+        put("staticEntranceCode", staticEntranceCode)
+        put("rotationWindowSeconds", rotationWindowSeconds)
+        if (gymLatitude != null) put("gymLatitude", gymLatitude)
+        if (gymLongitude != null) put("gymLongitude", gymLongitude)
+        if (allowedRadiusMeters != null) put("allowedRadiusMeters", allowedRadiusMeters)
+        put("isQrEnabled", isQrEnabled)
+        put("allowStaticFallback", allowStaticFallback)
+        put("qrVersion", qrVersion)
+        put("updatedAt", FieldValue.serverTimestamp())
+    }
+}
 
 @IgnoreExtraProperties
 data class ReferralRecordDoc(
@@ -300,6 +369,17 @@ data class ReferralRecordDoc(
         put("isVerified", false)
         put("createdAt", FieldValue.serverTimestamp())
     }
+
+    fun toAdminUpdateMap(approved: Boolean, resolvedReferrerUid: String?): Map<String, Any> = buildMap {
+        val refUid = resolvedReferrerUid ?: referrerUserId
+        if (!refUid.isNullOrBlank()) put("referrerUserId", refUid)
+        put("referrerCode", referrerCode)
+        put("referredUserId", referredUserId)
+        put("referredName", referredName)
+        put("status", if (approved) "VERIFIED" else "REJECTED")
+        put("isVerified", approved)
+        put("createdAt", createdAt ?: FieldValue.serverTimestamp())
+    }
 }
 
 @IgnoreExtraProperties
@@ -307,5 +387,147 @@ data class AppConfigDoc(
     @DocumentId val id: String = "",
     val latestVersion: String = "1.0.0",
     val releaseDate: String = "",
-    val releaseHighlights: List<String> = emptyList()
-)
+    val releaseHighlights: List<String> = emptyList(),
+    val githubRepo: String? = null,
+    val downloadUrl: String? = null
+) {
+    fun toWriteMap(): Map<String, Any> = buildMap {
+        put("latestVersion", latestVersion)
+        put("releaseDate", releaseDate)
+        put("releaseHighlights", releaseHighlights)
+        if (!githubRepo.isNullOrBlank()) put("githubRepo", githubRepo)
+        if (!downloadUrl.isNullOrBlank()) put("downloadUrl", downloadUrl)
+    }
+}
+
+@IgnoreExtraProperties
+data class CompetitionConfigDoc(
+    @DocumentId val id: String = "",
+    val categoryId: String = "",
+    val title: String = "",
+    val periodLabel: String = "",
+    val targetDescription: String = "",
+    val targetValue: Long = 0L,
+    val rewardTitle: String = "",
+    val rewardDescription: String? = null,
+    val isActive: Boolean = true,
+    @ServerTimestamp val updatedAt: Timestamp? = null
+) {
+    fun toWriteMap(): Map<String, Any> = buildMap {
+        put("categoryId", categoryId)
+        put("title", title)
+        put("periodLabel", periodLabel)
+        put("targetDescription", targetDescription)
+        put("targetValue", targetValue)
+        put("rewardTitle", rewardTitle)
+        if (!rewardDescription.isNullOrBlank()) put("rewardDescription", rewardDescription)
+        put("isActive", isActive)
+        put("updatedAt", FieldValue.serverTimestamp())
+    }
+}
+
+@IgnoreExtraProperties
+data class PromotionalOfferDoc(
+    @DocumentId val id: String = "",
+    val title: String = "",
+    val subtitle: String = "",
+    val badgeText: String = "SPECIAL OFFER",
+    val discountCode: String? = null,
+    val validUntilLabel: String = "",
+    val targetAudience: String = "ALL_MEMBERS",
+    val isActive: Boolean = true,
+    @ServerTimestamp val createdAt: Timestamp? = null
+) {
+    fun toWriteMap(): Map<String, Any> = buildMap {
+        put("title", title)
+        put("subtitle", subtitle)
+        put("badgeText", badgeText)
+        if (!discountCode.isNullOrBlank()) put("discountCode", discountCode)
+        put("validUntilLabel", validUntilLabel)
+        put("targetAudience", targetAudience)
+        put("isActive", isActive)
+        put("createdAt", FieldValue.serverTimestamp())
+    }
+}
+
+@IgnoreExtraProperties
+data class BroadcastNotificationDoc(
+    @DocumentId val id: String = "",
+    val title: String = "",
+    val message: String = "",
+    val type: String = "GENERAL",
+    val audience: String = "ALL_MEMBERS",
+    val isUrgent: Boolean = false,
+    val createdByAdminUid: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null
+) {
+    fun toWriteMap(): Map<String, Any> = mapOf(
+        "title" to title,
+        "message" to message,
+        "type" to type,
+        "audience" to audience,
+        "isUrgent" to isUrgent,
+        "createdByAdminUid" to createdByAdminUid,
+        "createdAt" to FieldValue.serverTimestamp()
+    )
+}
+
+@IgnoreExtraProperties
+data class QrSecurityEventDoc(
+    @DocumentId val id: String = "",
+    val userId: String = "",
+    val memberName: String = "",
+    val memberCode: String? = null,
+    val eventType: String = "INVALID_CODE",
+    val reason: String = "",
+    val rawCodePrefix: String? = null,
+    val distanceMeters: Double? = null,
+    val reviewed: Boolean = false,
+    @ServerTimestamp val createdAt: Timestamp? = null
+) {
+    fun toCreateMap(): Map<String, Any> = buildMap {
+        put("userId", userId)
+        put("memberName", memberName)
+        if (!memberCode.isNullOrBlank()) put("memberCode", memberCode)
+        put("eventType", eventType)
+        put("reason", reason)
+        if (!rawCodePrefix.isNullOrBlank()) put("rawCodePrefix", rawCodePrefix)
+        if (distanceMeters != null) put("distanceMeters", distanceMeters)
+        put("reviewed", false)
+        put("createdAt", FieldValue.serverTimestamp())
+    }
+
+    fun toMarkReviewedMap(): Map<String, Any> = buildMap {
+        put("userId", userId)
+        put("memberName", memberName)
+        if (!memberCode.isNullOrBlank()) put("memberCode", memberCode)
+        put("eventType", eventType)
+        put("reason", reason)
+        if (!rawCodePrefix.isNullOrBlank()) put("rawCodePrefix", rawCodePrefix)
+        if (distanceMeters != null) put("distanceMeters", distanceMeters)
+        put("reviewed", true)
+        put("createdAt", createdAt ?: FieldValue.serverTimestamp())
+    }
+}
+
+@IgnoreExtraProperties
+data class AdminAuditLogDoc(
+    @DocumentId val id: String = "",
+    val adminUserId: String = "",
+    val adminEmail: String = "",
+    val actionType: String = "",
+    val targetId: String = "",
+    val summary: String = "",
+    val details: String? = null,
+    @ServerTimestamp val createdAt: Timestamp? = null
+) {
+    fun toCreateMap(): Map<String, Any> = buildMap {
+        put("adminUserId", adminUserId)
+        put("adminEmail", adminEmail)
+        put("actionType", actionType)
+        put("targetId", targetId)
+        put("summary", summary)
+        if (!details.isNullOrBlank()) put("details", details)
+        put("createdAt", FieldValue.serverTimestamp())
+    }
+}

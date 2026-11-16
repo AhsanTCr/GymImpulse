@@ -1,5 +1,7 @@
 package com.example.features.profile
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -20,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SystemUpdate
@@ -33,12 +36,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.models.UpdateAvailabilityState
 import com.example.ui.components.ApexSubScreenTopBar
+import com.example.ui.components.PrimaryAthleticButton
 import com.example.ui.components.SecondaryAthleticButton
 import com.example.ui.theme.LocalGymSemanticColors
 
@@ -52,6 +57,7 @@ fun AppUpdatesScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val info = state.updateInfo
     val semantic = LocalGymSemanticColors.current
+    val context = LocalContext.current
 
     Box(
         modifier = modifier
@@ -251,6 +257,20 @@ fun AppUpdatesScreen(
                             modifier = Modifier.padding(12.dp)
                         )
                     }
+                }
+
+                if (info.availabilityState == UpdateAvailabilityState.UPDATE_AVAILABLE && !info.downloadUrl.isNullOrBlank()) {
+                    PrimaryAthleticButton(
+                        text = "Download & Install v${info.latestVersion}",
+                        icon = Icons.Rounded.Download,
+                        testTag = "app_updates_download_button",
+                        onClick = {
+                            runCatching {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl))
+                                context.startActivity(intent)
+                            }
+                        }
+                    )
                 }
 
                 SecondaryAthleticButton(

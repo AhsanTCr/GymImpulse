@@ -21,6 +21,9 @@ import com.example.models.MembershipOverview
 import com.example.models.PersonalStats
 import com.example.models.UpdateAvailabilityState
 import com.example.models.UserRole
+import com.example.utils.AvatarUtils
+import com.example.utils.GitHubReleaseChecker
+import com.example.utils.GitHubReleaseResult
 import com.example.utils.ImageCompressionUtils
 import com.example.utils.MembershipCycleCalculator
 import com.example.utils.StreakAndLeaderboardEngine
@@ -75,18 +78,27 @@ class ProfileViewModel(
 ) : ViewModel() {
 
     private val _remoteAppConfig = MutableStateFlow<AppConfigDoc?>(null)
+    private val _githubRelease = MutableStateFlow<GitHubReleaseResult?>(null)
     private val _checkingUpdate = MutableStateFlow(false)
     private val _updateActionMessage = MutableStateFlow<String?>(null)
     private val _profileStatusMessage = MutableStateFlow<String?>(null)
     private val _isSavingProfile = MutableStateFlow(false)
 
     init {
-        refreshRemoteAppConfig()
+        observeRemoteAppConfig()
     }
 
-    private fun refreshRemoteAppConfig() {
+    private fun observeRemoteAppConfig() {
         viewModelScope.launch {
-            _remoteAppConfig.value = runCatching { repository.getAppConfig() }.getOrNull()
+            repository.observeAppConfig()
+                .catch { /* Preserve default/last known config on transient offline state */ }
+                .collect { config ->
+                    _remoteAppConfig.value = config
+                    val repoSlug = config?.githubRepo?.takeIf { it.isNotBlank() } ?: AppConfig.DEFAULT_GITHUB_REPO
+                    if (repoSlug.isNotBlank() && _githubRelease.value == null) {
+                        _githubRelease.value = GitHubReleaseChecker.fetchLatestRelease(repoSlug)
+                    }
+                }
         }
     }
 
@@ -103,9 +115,10 @@ class ProfileViewModel(
         repository.observeLeaderboardStats().catch { emit(emptyList()) },
         repository.observeMyReferrals(currentUserId).catch { emit(emptyList()) },
         _remoteAppConfig,
+        _githubRelease,
         _checkingUpdate
-    ) { lbStats, referrals, remoteConfig, checking ->
-        ProfileClubStreams(lbStats, referrals, remoteConfig, checking)
+    ) { lbStats, referrals, remoteConfig, ghRelease, checking ->
+        ProfileClubStreamsExtended(lbStats, referrals, remoteConfig, ghRelease, checking)
     }
 
     private val feedbackStreams = combine(
@@ -176,17 +189,37 @@ class ProfileViewModel(
         }
 
         val remote = club.remoteConfig
-        val latestVersion = remote?.latestVersion?.takeIf { it.isNotBlank() } ?: AppConfig.INSTALLED_VERSION
+        val gh = club.ghRelease
+        val firestoreVer = remote?.latestVersion?.takeIf { it.isNotBlank() } ?: AppConfig.INSTALLED_VERSION
+        val ghVer = gh?.version?.takeIf { it.isNotBlank() }
+        val useGhRelease = ghVer != null && !GitHubReleaseChecker.isNewerVersion(firestoreVer, ghVer)
+
+        val latestVersion = if (useGhRelease) ghVer!! else firestoreVer
+        val releaseDate = when {
+            useGhRelease -> gh!!.releaseDate
+            !remote?.releaseDate.isNullOrBlank() -> remote!!.releaseDate
+            else -> "Current Release"
+        }
+        val highlights = when {
+            useGhRelease && gh!!.highlights.isNotEmpty() -> gh.highlights
+            !remote?.releaseHighlights.isNullOrEmpty() -> remote!!.releaseHighlights
+            else -> listOf(
+                "Real-time Firestore club sync & Google Sign-In",
+                "Common entrance QR verification with anti-fraud checks",
+                "Daily healthy food servings tracker & 7-day insights"
+            )
+        }
+        val resolvedRepo = remote?.githubRepo?.takeIf { it.isNotBlank() }
+            ?: AppConfig.DEFAULT_GITHUB_REPO.takeIf { it.isNotBlank() }
+        val resolvedDownloadUrl = remote?.downloadUrl?.takeIf { it.isNotBlank() }
+            ?: gh?.downloadUrl
+            ?: resolvedRepo?.let { "https://github.com/$it/releases/latest" }
+
         val updateState = when {
             club.checkingUpdate -> UpdateAvailabilityState.CHECKING
-            isNewerVersion(latestVersion, AppConfig.INSTALLED_VERSION) -> UpdateAvailabilityState.UPDATE_AVAILABLE
+            GitHubReleaseChecker.isNewerVersion(latestVersion, AppConfig.INSTALLED_VERSION) -> UpdateAvailabilityState.UPDATE_AVAILABLE
             else -> UpdateAvailabilityState.UP_TO_DATE
         }
-        val highlights = remote?.releaseHighlights?.takeIf { it.isNotEmpty() } ?: listOf(
-            "Real-time Firestore club sync & Google Sign-In",
-            "Common entrance QR verification with anti-fraud checks",
-            "Daily healthy food servings tracker & 7-day insights"
-        )
 
         MemberProfileUiState(
             isLoading = profileDoc == null,
@@ -197,9 +230,11 @@ class ProfileViewModel(
             updateInfo = AppUpdateInfo(
                 installedVersion = AppConfig.INSTALLED_VERSION,
                 latestVersion = latestVersion,
-                releaseDate = remote?.releaseDate?.ifBlank { "Current Release" } ?: "Current Release",
+                releaseDate = releaseDate,
                 availabilityState = updateState,
-                releaseHighlights = highlights
+                releaseHighlights = highlights,
+                downloadUrl = resolvedDownloadUrl,
+                githubRepo = resolvedRepo
             ),
             profileStatusMessage = feedback.first,
             updateActionMessage = feedback.second,
@@ -286,10 +321,17 @@ class ProfileViewModel(
             try {
                 val config = repository.getAppConfig()
                 _remoteAppConfig.value = config
+                val repoSlug = config?.githubRepo?.takeIf { it.isNotBlank() } ?: AppConfig.DEFAULT_GITHUB_REPO
+                val gh = if (repoSlug.isNotBlank()) GitHubReleaseChecker.fetchLatestRelease(repoSlug) else null
+                if (gh != null) _githubRelease.value = gh
+
                 _checkingUpdate.value = false
-                val latest = config?.latestVersion?.takeIf { it.isNotBlank() } ?: AppConfig.INSTALLED_VERSION
-                _updateActionMessage.value = if (isNewerVersion(latest, AppConfig.INSTALLED_VERSION)) {
-                    "New GymPulse release v$latest is available."
+                val firestoreVer = config?.latestVersion?.takeIf { it.isNotBlank() } ?: AppConfig.INSTALLED_VERSION
+                val ghVer = gh?.version?.takeIf { it.isNotBlank() }
+                val latest = if (ghVer != null && !GitHubReleaseChecker.isNewerVersion(firestoreVer, ghVer)) ghVer else firestoreVer
+
+                _updateActionMessage.value = if (GitHubReleaseChecker.isNewerVersion(latest, AppConfig.INSTALLED_VERSION)) {
+                    "New Gymimpulse release v$latest is available for download."
                 } else {
                     "You are running the latest version (v${AppConfig.INSTALLED_VERSION})."
                 }
@@ -299,17 +341,12 @@ class ProfileViewModel(
             }
         }
     }
-
-    private fun isNewerVersion(remote: String, installed: String): Boolean {
-        val rParts = remote.split(".").map { it.toIntOrNull() ?: 0 }
-        val iParts = installed.split(".").map { it.toIntOrNull() ?: 0 }
-        val maxLen = maxOf(rParts.size, iParts.size)
-        for (idx in 0 until maxLen) {
-            val r = rParts.getOrElse(idx) { 0 }
-            val i = iParts.getOrElse(idx) { 0 }
-            if (r > i) return true
-            if (r < i) return false
-        }
-        return false
-    }
 }
+
+private data class ProfileClubStreamsExtended(
+    val leaderboardStats: List<LeaderboardStatDoc>,
+    val referrals: List<ReferralRecordDoc>,
+    val remoteConfig: AppConfigDoc?,
+    val ghRelease: GitHubReleaseResult?,
+    val checkingUpdate: Boolean
+)

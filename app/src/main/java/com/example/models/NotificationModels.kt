@@ -20,5 +20,7 @@ data class AppUpdateInfo(
     val latestVersion: String,
     val releaseDate: String,
     val availabilityState: UpdateAvailabilityState,
-    val releaseHighlights: List<String>
+    val releaseHighlights: List<String>,
+    val downloadUrl: String? = null,
+    val githubRepo: String? = null
 )

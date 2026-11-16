@@ -150,10 +150,90 @@ service cloud.firestore {
              data.isVerified is bool;
     }
 
+    function isValidAnnouncement(data) {
+      return data.title is string && data.title.size() >= 2 && data.title.size() <= 140 &&
+             data.description is string && data.description.size() >= 2 && data.description.size() <= 1500 &&
+             data.dateLabel is string && data.dateLabel.size() <= 40 &&
+             data.category in ['IMPORTANT', 'EVENT', 'COMPETITION'] &&
+             data.isImportant is bool &&
+             (!('isPublished' in data) || data.isPublished is bool) &&
+             (!('scheduledAtLabel' in data) || data.scheduledAtLabel == null || (data.scheduledAtLabel is string && data.scheduledAtLabel.size() <= 60)) &&
+             (!('imageKey' in data) || data.imageKey == null || (data.imageKey is string && data.imageKey.size() <= 40)) &&
+             (!('imageData' in data) || data.imageData == null || (data.imageData is string && data.imageData.size() <= 120000)) &&
+             (!('ctaLabel' in data) || data.ctaLabel == null || (data.ctaLabel is string && data.ctaLabel.size() <= 80));
+    }
+
+    function isValidCompetitionConfig(data) {
+      return data.categoryId is string && data.categoryId.size() <= 60 &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 80 &&
+             data.periodLabel is string && data.periodLabel.size() >= 2 && data.periodLabel.size() <= 60 &&
+             data.targetDescription is string && data.targetDescription.size() <= 200 &&
+             data.targetValue is int && data.targetValue >= 0 && data.targetValue <= 10000 &&
+             data.rewardTitle is string && data.rewardTitle.size() <= 120 &&
+             (!('rewardDescription' in data) || data.rewardDescription == null || (data.rewardDescription is string && data.rewardDescription.size() <= 300)) &&
+             data.isActive is bool;
+    }
+
+    function isValidPromotionalOffer(data) {
+      return data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+             data.subtitle is string && data.subtitle.size() >= 2 && data.subtitle.size() <= 300 &&
+             data.badgeText is string && data.badgeText.size() <= 40 &&
+             (!('discountCode' in data) || data.discountCode == null || (data.discountCode is string && data.discountCode.size() <= 40)) &&
+             data.validUntilLabel is string && data.validUntilLabel.size() <= 60 &&
+             data.targetAudience in ['ALL_MEMBERS', 'ACTIVE_MEMBERS', 'EXPIRING_SOON', 'OVERDUE'] &&
+             data.isActive is bool;
+    }
+
+    function isValidBroadcastNotification(data) {
+      return data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+             data.message is string && data.message.size() >= 2 && data.message.size() <= 500 &&
+             data.type in ['GENERAL', 'MEMBERSHIP_REMINDER', 'COMPETITION', 'IMPORTANT_UPDATE', 'SPECIAL_OFFER'] &&
+             data.audience in ['ALL_MEMBERS', 'ACTIVE_MEMBERS', 'EXPIRING_SOON', 'OVERDUE'] &&
+             data.isUrgent is bool &&
+             data.createdByAdminUid is string && data.createdByAdminUid.size() <= 128;
+    }
+
+    function isValidQrSecurityEvent(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.memberName is string && data.memberName.size() <= 80 &&
+             (!('memberCode' in data) || data.memberCode == null || (data.memberCode is string && data.memberCode.size() <= 32)) &&
+             data.eventType in ['EXPIRED_TOKEN', 'OUT_OF_RANGE', 'INVALID_CODE', 'DUPLICATE_SCAN', 'QR_DISABLED'] &&
+             data.reason is string && data.reason.size() <= 260 &&
+             (!('rawCodePrefix' in data) || data.rawCodePrefix == null || (data.rawCodePrefix is string && data.rawCodePrefix.size() <= 64)) &&
+             (!('distanceMeters' in data) || data.distanceMeters == null || data.distanceMeters is number) &&
+             data.reviewed is bool;
+    }
+
+    function isValidAuditLog(data) {
+      return data.adminUserId is string && data.adminUserId.size() <= 128 &&
+             data.adminEmail is string && data.adminEmail.size() <= 120 &&
+             data.actionType is string && data.actionType.size() >= 2 && data.actionType.size() <= 60 &&
+             data.targetId is string && data.targetId.size() <= 128 &&
+             data.summary is string && data.summary.size() >= 2 && data.summary.size() <= 200 &&
+             (!('details' in data) || data.details == null || (data.details is string && data.details.size() <= 600));
+    }
+
     // --- Admin Registry ---
     match /admins/{adminUid} {
       allow get: if isOwner(adminUid) || isAdmin();
       allow list, write: if false;
+    }
+
+    // --- Collection Group Admin Access for Club-Wide Analytics & Approvals ---
+    match /{path=**}/memberships/{membershipId} {
+      allow list, get: if isAdmin();
+    }
+
+    match /{path=**}/payment_requests/{requestId} {
+      allow list, get: if isAdmin();
+    }
+
+    match /{path=**}/payments/{paymentId} {
+      allow list, get: if isAdmin();
+    }
+
+    match /{path=**}/attendance/{dateKey} {
+      allow list, get: if isAdmin();
     }
 
     // --- Private Member Account & Subcollections ---
@@ -294,16 +374,16 @@ service cloud.firestore {
       allow get: if isValidId(userId) && isSignedIn();
       allow list: if isSignedIn();
 
-      // Client can initialize or sync own non-privileged workout/habit stats;
-      // verifiedReferralsCount and isMonthlyWinner are strictly locked to admin verification!
-      allow create: if isValidId(userId) && isOwner(userId) &&
-                       incoming().userId == request.auth.uid &&
-                       incoming().verifiedReferralsCount == 0 &&
-                       incoming().isMonthlyWinner == false &&
-                       incoming().keys().hasAll(['userId', 'memberName', 'currentStreakDays', 'longestStreakDays', 'monthlyVisits', 'weeklyTargetMetWeeks', 'healthyHabitsScore', 'verifiedReferralsCount', 'isMonthlyWinner', 'monthKey', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['userId', 'memberName', 'avatarData', 'currentStreakDays', 'longestStreakDays', 'monthlyVisits', 'weeklyTargetMetWeeks', 'healthyHabitsScore', 'verifiedReferralsCount', 'isMonthlyWinner', 'monthKey', 'updatedAt']) &&
-                       isValidTimestamp(incoming().updatedAt) &&
-                       isValidLeaderboardStat(incoming());
+      allow create: if isValidId(userId) && isValidLeaderboardStat(incoming()) && (
+                       isAdmin() ||
+                       (isOwner(userId) &&
+                        incoming().userId == request.auth.uid &&
+                        incoming().verifiedReferralsCount == 0 &&
+                        incoming().isMonthlyWinner == false &&
+                        incoming().keys().hasAll(['userId', 'memberName', 'currentStreakDays', 'longestStreakDays', 'monthlyVisits', 'weeklyTargetMetWeeks', 'healthyHabitsScore', 'verifiedReferralsCount', 'isMonthlyWinner', 'monthKey', 'updatedAt']) &&
+                        incoming().keys().hasOnly(['userId', 'memberName', 'avatarData', 'currentStreakDays', 'longestStreakDays', 'monthlyVisits', 'weeklyTargetMetWeeks', 'healthyHabitsScore', 'verifiedReferralsCount', 'isMonthlyWinner', 'monthKey', 'updatedAt']) &&
+                        isValidTimestamp(incoming().updatedAt))
+                    );
 
       allow update: if isValidId(userId) && isValidLeaderboardStat(incoming()) && (
                        isAdmin() ||
@@ -311,7 +391,6 @@ service cloud.firestore {
                         incoming().userId == existing().userId &&
                         incoming().verifiedReferralsCount == existing().verifiedReferralsCount &&
                         incoming().isMonthlyWinner == existing().isMonthlyWinner &&
-                        // Prevent arbitrary single-write inflation (at most +1 per verified sync)
                         incoming().currentStreakDays <= existing().currentStreakDays + 1 &&
                         incoming().monthlyVisits <= existing().monthlyVisits + 1 &&
                         isValidTimestamp(incoming().updatedAt) &&
@@ -332,7 +411,8 @@ service cloud.firestore {
     match /announcements/{announcementId} {
       allow get: if isValidId(announcementId) && isSignedIn();
       allow list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow create, update: if isValidId(announcementId) && isAdmin() && isValidAnnouncement(incoming());
+      allow delete: if isValidId(announcementId) && isAdmin();
     }
 
     // --- Gym Common Entrance QR Config ---
@@ -345,8 +425,52 @@ service cloud.firestore {
     // --- App Version / Update Metadata ---
     match /app_config/{docId} {
       allow get: if isValidId(docId) && isSignedIn();
-      allow list: if false;
+      allow list: if isAdmin();
       allow create, update, delete: if isAdmin();
+    }
+
+    // --- Competition Configs (Targets, Periods, Rewards) ---
+    match /competition_configs/{categoryId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isValidId(categoryId) && isAdmin() && isValidCompetitionConfig(incoming());
+      allow delete: if isValidId(categoryId) && isAdmin();
+    }
+
+    // --- Promotional Offers ---
+    match /promotional_offers/{offerId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isValidId(offerId) && isAdmin() && isValidPromotionalOffer(incoming());
+      allow delete: if isValidId(offerId) && isAdmin();
+    }
+
+    // --- Admin Broadcast Notifications ---
+    match /notifications_broadcast/{notifId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isValidId(notifId) && isAdmin() && isValidBroadcastNotification(incoming());
+      allow delete: if isValidId(notifId) && isAdmin();
+    }
+
+    // --- QR Failed / Suspicious Scan Events ---
+    match /qr_security_events/{eventId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(eventId) &&
+                       isOwner(incoming().userId) &&
+                       incoming().reviewed == false &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidQrSecurityEvent(incoming());
+      allow update: if isValidId(eventId) && isAdmin() && isValidQrSecurityEvent(incoming());
+      allow delete: if false;
+    }
+
+    // --- Immutable Admin Audit Logs ---
+    match /admin_audit_logs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(logId) &&
+                       isAdmin() &&
+                       incoming().adminUserId == request.auth.uid &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidAuditLog(incoming());
+      allow update, delete: if false;
     }
 
     // --- Referral Records (Only verified by Admin) ---

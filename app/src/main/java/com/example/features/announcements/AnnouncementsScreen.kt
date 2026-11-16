@@ -44,10 +44,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
@@ -56,6 +58,7 @@ import com.example.models.GymAnnouncement
 import com.example.ui.components.ApexSubScreenTopBar
 import com.example.ui.components.EmptyStateView
 import com.example.ui.theme.LocalGymSemanticColors
+import com.example.utils.ImageCompressionUtils
 
 @Composable
 fun AnnouncementsScreen(
@@ -152,17 +155,12 @@ fun AnnouncementsScreen(
             title = { Text(item.title) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (item.bannerDrawableRes != null) {
-                        Image(
-                            painter = painterResource(id = item.bannerDrawableRes),
-                            contentDescription = stringResource(R.string.cd_announcement_image),
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(130.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                        )
-                    }
+                    AnnouncementBannerImage(
+                        bannerDrawableRes = item.bannerDrawableRes,
+                        bannerImageData = item.bannerImageData,
+                        height = 130.dp,
+                        modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                    )
                     Text(
                         text = "${item.category.label} • ${item.dateLabel}",
                         style = MaterialTheme.typography.labelMedium,
@@ -204,16 +202,11 @@ private fun AnnouncementCard(
         onClick = onClick
     ) {
         Column {
-            if (announcement.bannerDrawableRes != null) {
-                Image(
-                    painter = painterResource(id = announcement.bannerDrawableRes),
-                    contentDescription = stringResource(R.string.cd_announcement_image),
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(156.dp)
-                )
-            }
+            AnnouncementBannerImage(
+                bannerDrawableRes = announcement.bannerDrawableRes,
+                bannerImageData = announcement.bannerImageData,
+                height = 156.dp
+            )
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -307,6 +300,40 @@ private fun AnnouncementCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AnnouncementBannerImage(
+    bannerDrawableRes: Int?,
+    bannerImageData: String?,
+    height: Dp,
+    modifier: Modifier = Modifier
+) {
+    val decoded = remember(bannerImageData) {
+        bannerImageData?.let { ImageCompressionUtils.decodeBase64DataUri(it)?.asImageBitmap() }
+    }
+    when {
+        decoded != null -> {
+            Image(
+                bitmap = decoded,
+                contentDescription = stringResource(R.string.cd_announcement_image),
+                contentScale = ContentScale.Crop,
+                modifier = modifier
+                    .fillMaxWidth()
+                    .height(height)
+            )
+        }
+        bannerDrawableRes != null -> {
+            Image(
+                painter = painterResource(id = bannerDrawableRes),
+                contentDescription = stringResource(R.string.cd_announcement_image),
+                contentScale = ContentScale.Crop,
+                modifier = modifier
+                    .fillMaxWidth()
+                    .height(height)
+            )
         }
     }
 }

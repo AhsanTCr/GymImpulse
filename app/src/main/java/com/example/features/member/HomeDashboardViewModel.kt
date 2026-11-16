@@ -5,11 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.config.AppConfig
 import com.example.database.AnnouncementDoc
 import com.example.database.AttendanceRecordDoc
+import com.example.database.BroadcastNotificationDoc
 import com.example.database.DailyFoodLogDoc
 import com.example.database.LeaderboardStatDoc
 import com.example.database.MemberFirestoreRepository
 import com.example.database.MembershipRecordDoc
 import com.example.database.PaymentRecordDoc
+import com.example.database.PromotionalOfferDoc
 import com.example.database.ReferralRecordDoc
 import com.example.database.UserProfileDoc
 import com.example.database.toFriendlyFirestoreMessage
@@ -18,6 +20,7 @@ import com.example.models.GymAnnouncement
 import com.example.models.LeaderboardCategory
 import com.example.models.MemberProfile
 import com.example.models.MembershipOverview
+import com.example.models.MembershipStatus
 import com.example.models.PersonalStats
 import com.example.models.TodayAttendanceState
 import com.example.models.UserRole
@@ -43,7 +46,9 @@ data class HomeDashboardUiState(
     val proteinGoalGrams: Int = AppConfig.DEFAULT_PROTEIN_GOAL_GRAMS,
     val foodsLoggedCount: Int = 0,
     val totalFoodsCount: Int = NutritionAnalyticsEngine.catalogFoods.size,
-    val latestAnnouncement: GymAnnouncement? = null
+    val latestAnnouncement: GymAnnouncement? = null,
+    val latestBroadcast: BroadcastNotificationDoc? = null,
+    val activeOffer: PromotionalOfferDoc? = null
 )
 
 private data class PrivateUserStreams(
@@ -83,10 +88,18 @@ class HomeDashboardViewModel(
         ClubAndActivityStreams(foodLogs, leaderboardStats, announcements, referrals)
     }
 
+    private val engagementStreams = combine(
+        repository.observePromotionalOffers().catch { emit(emptyList()) },
+        repository.observeBroadcastNotifications().catch { emit(emptyList()) }
+    ) { offers, broadcasts ->
+        offers to broadcasts
+    }
+
     val uiState: StateFlow<HomeDashboardUiState> = combine(
         privateStreams,
-        clubStreams
-    ) { priv, club ->
+        clubStreams,
+        engagementStreams
+    ) { priv, club, engagement ->
         val profileDoc = priv.profile
         if (profileDoc == null) {
             return@combine HomeDashboardUiState(isLoading = true)
@@ -143,6 +156,12 @@ class HomeDashboardViewModel(
         val foodsLoggedCount = todayLog?.foodsCount?.toInt() ?: 0
 
         val latestAnn = club.announcements.firstOrNull()?.toDomainModel()
+        val matchingOffer = engagement.first.firstOrNull {
+            matchesMemberAudience(it.targetAudience, membershipOverview.status)
+        }
+        val matchingBroadcast = engagement.second.firstOrNull {
+            matchesMemberAudience(it.audience, membershipOverview.status)
+        }
 
         HomeDashboardUiState(
             isLoading = false,
@@ -155,7 +174,9 @@ class HomeDashboardViewModel(
             proteinGoalGrams = AppConfig.DEFAULT_PROTEIN_GOAL_GRAMS,
             foodsLoggedCount = foodsLoggedCount,
             totalFoodsCount = NutritionAnalyticsEngine.catalogFoods.size,
-            latestAnnouncement = latestAnn
+            latestAnnouncement = latestAnn,
+            latestBroadcast = matchingBroadcast,
+            activeOffer = matchingOffer
         )
     }.catch { error ->
         emit(
@@ -189,7 +210,19 @@ internal fun AnnouncementDoc.toDomainModel(): GymAnnouncement {
         dateLabel = dateLabel,
         category = parsedCategory,
         isImportant = isImportant,
+        isPublished = isPublished,
+        scheduledAtLabel = scheduledAtLabel,
         bannerDrawableRes = bannerRes,
+        bannerImageData = imageData,
         ctaLabel = ctaLabel
     )
+}
+
+private fun matchesMemberAudience(audience: String, status: MembershipStatus): Boolean {
+    return when (audience.uppercase()) {
+        "ACTIVE_MEMBERS" -> status == MembershipStatus.ACTIVE || status == MembershipStatus.EXPIRING_SOON
+        "EXPIRING_SOON" -> status == MembershipStatus.EXPIRING_SOON
+        "OVERDUE" -> status == MembershipStatus.PAYMENT_OVERDUE || status == MembershipStatus.EXPIRED
+        else -> true
+    }
 }

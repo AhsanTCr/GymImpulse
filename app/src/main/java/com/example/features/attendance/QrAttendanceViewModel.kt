@@ -34,6 +34,9 @@ data class QrAttendanceScreenState(
     val isLoading: Boolean = true,
     val currentMember: MemberProfile? = null,
     val expectedEntranceCode: String = AppConfig.COMMON_ENTRANCE_QR_CODE,
+    val isQrEnabled: Boolean = true,
+    val allowStaticFallback: Boolean = true,
+    val rotationWindowSeconds: Long = AppConfig.QR_ROTATION_WINDOW_SECONDS,
     val todayStatus: TodayAttendanceState = TodayAttendanceState.NOT_CHECKED_IN,
     val scanState: QrScanUiState = QrScanUiState.ReadyToScan,
     val recentHistory: List<AttendanceRecord> = emptyList(),
@@ -51,7 +54,11 @@ class QrAttendanceViewModel(
 
     init {
         viewModelScope.launch {
-            _gymConfig.value = runCatching { repository.getGymConfig() }.getOrNull()
+            repository.observeGymConfig()
+                .catch { /* Keep defaults when gym_config doc is absent */ }
+                .collect { config ->
+                    _gymConfig.value = config
+                }
         }
     }
 
@@ -108,6 +115,9 @@ class QrAttendanceViewModel(
             isLoading = false,
             currentMember = member,
             expectedEntranceCode = expectedCode,
+            isQrEnabled = gymConfig?.isQrEnabled ?: true,
+            allowStaticFallback = gymConfig?.allowStaticFallback ?: true,
+            rotationWindowSeconds = gymConfig?.rotationWindowSeconds ?: AppConfig.QR_ROTATION_WINDOW_SECONDS,
             todayStatus = if (checkedInToday) TodayAttendanceState.CHECKED_IN else TodayAttendanceState.NOT_CHECKED_IN,
             scanState = scanState,
             recentHistory = mappedHistory,
@@ -156,6 +166,39 @@ class QrAttendanceViewModel(
         if (state.scanState is QrScanUiState.ScanningEntranceQr) return
 
         val gymConfig = _gymConfig.value
+        if (gymConfig?.isQrEnabled == false) {
+            val disabledReason = "Entrance QR check-in is temporarily paused by club administration."
+            _scanState.value = QrScanUiState.Error(disabledReason)
+            viewModelScope.launch {
+                repository.logQrSecurityEvent(
+                    memberName = member.fullName,
+                    memberCode = member.memberCode,
+                    eventType = "QR_DISABLED",
+                    reason = disabledReason,
+                    rawCodePrefix = rawPayload.take(32),
+                    distanceMeters = null
+                )
+            }
+            return
+        }
+
+        val hasDynamicToken = rawPayload.contains("|WIN:") && rawPayload.contains("|SIG:")
+        if (gymConfig?.allowStaticFallback == false && !hasDynamicToken) {
+            val fallbackReason = "Static desk code is disabled. Scan the live rotating reception QR display."
+            _scanState.value = QrScanUiState.Error(fallbackReason)
+            viewModelScope.launch {
+                repository.logQrSecurityEvent(
+                    memberName = member.fullName,
+                    memberCode = member.memberCode,
+                    eventType = "INVALID_CODE",
+                    reason = fallbackReason,
+                    rawCodePrefix = rawPayload.take(32),
+                    distanceMeters = null
+                )
+            }
+            return
+        }
+
         val (memberLat, memberLng) = readOptionalCoarseLocation(context)
         val verification = QrAntiFraudVerifier.verifyCheckIn(
             rawPayload = rawPayload,
@@ -172,6 +215,22 @@ class QrAttendanceViewModel(
         when (verification) {
             is QrVerificationResult.Invalid -> {
                 _scanState.value = QrScanUiState.Error(verification.reason)
+                val eventType = when {
+                    verification.reason.contains("already checked in", ignoreCase = true) -> "DUPLICATE_SCAN"
+                    verification.reason.contains("Expired", ignoreCase = true) -> "EXPIRED_TOKEN"
+                    verification.reason.contains("Location check", ignoreCase = true) -> "OUT_OF_RANGE"
+                    else -> "INVALID_CODE"
+                }
+                viewModelScope.launch {
+                    repository.logQrSecurityEvent(
+                        memberName = member.fullName,
+                        memberCode = member.memberCode,
+                        eventType = eventType,
+                        reason = verification.reason,
+                        rawCodePrefix = rawPayload.take(32),
+                        distanceMeters = null
+                    )
+                }
             }
             is QrVerificationResult.Valid -> {
                 _scanState.value = QrScanUiState.ScanningEntranceQr

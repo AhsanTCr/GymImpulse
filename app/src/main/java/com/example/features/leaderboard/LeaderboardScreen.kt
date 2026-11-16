@@ -157,6 +157,56 @@ fun LeaderboardScreen(
                 }
             }
 
+            // Live Competition Rules & Reward Banner (synced from Admin Competition Control)
+            state.activeConfig?.takeIf { it.isActive }?.let { config ->
+                item {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("leaderboard_active_config_banner"),
+                        shape = MaterialTheme.shapes.medium,
+                        color = semantic.warningAmberContainer.copy(alpha = 0.7f),
+                        border = BorderStroke(1.dp, semantic.warningAmber.copy(alpha = 0.45f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = config.periodLabel.ifBlank { "Active Challenge" }.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = semantic.warningAmber
+                                )
+                                Text(
+                                    text = "Target: ${config.targetValue}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (config.rewardTitle.isNotBlank()) {
+                                Text(
+                                    text = "Prize: ${config.rewardTitle}",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            if (config.targetDescription.isNotBlank()) {
+                                Text(
+                                    text = config.targetDescription,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             if (state.isLoading) {
                 item {
                     Box(

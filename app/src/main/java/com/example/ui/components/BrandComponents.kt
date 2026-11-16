@@ -73,7 +73,7 @@ fun ApexPulseLogo(
         if (showText) {
             Column {
                 Text(
-                    text = "APEXPULSE",
+                    text = "GYMIMPULSE",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onBackground
                 )

@@ -163,7 +163,7 @@ fun SplashScreen(
                 Spacer(modifier = Modifier.height(28.dp))
 
                 Text(
-                    text = "GYMPULSE",
+                    text = "GYMIMPULSE",
                     style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onBackground
                 )

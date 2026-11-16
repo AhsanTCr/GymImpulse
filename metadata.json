@@ -1,6 +1,6 @@
 {
-  "name": "GymPulse",
-  "description": "Modern gym management and member engagement mobile application featuring QR entrance attendance, competitive leaderboards, daily nutrition tracking, and membership cycle management.",
+  "name": "Gymimpulse",
+  "description": "Modern gym management and member engagement mobile application featuring QR entrance attendance, competitive leaderboards, daily nutrition tracking, membership cycle management, and a role-gated admin console.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

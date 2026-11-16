@@ -1,15 +1,19 @@
 package com.example.config
 
 /**
- * Central application configuration constants for GymPulse.
- * Phase 2 connects Cloud Firestore & Google Sign-In while reserving Phase 3 admin portal flags.
+ * Central application configuration constants for Gymimpulse.
+ * Phase 3 activates the role-gated & passcode-protected Admin Portal alongside full Member sync.
  */
 object AppConfig {
-    const val APP_NAME = "GymPulse"
-    const val GYM_NAME = "GymPulse Performance Club"
+    const val APP_NAME = "Gymimpulse"
+    const val GYM_NAME = "Gymimpulse Performance Club"
     const val GYM_LOCATION = "Downtown Athletic District"
-    const val INSTALLED_VERSION = "1.0.0"
-    const val INSTALLED_BUILD_NUMBER = 100
+    val INSTALLED_VERSION: String
+        get() = com.example.BuildConfig.VERSION_NAME
+    val INSTALLED_BUILD_NUMBER: Int
+        get() = com.example.BuildConfig.VERSION_CODE
+    val DEFAULT_GITHUB_REPO: String
+        get() = com.example.BuildConfig.GITHUB_REPO
 
     // Single physical entrance QR code identifier displayed at the gym reception
     const val COMMON_ENTRANCE_QR_CODE = "APEXPULSE-MAIN-ENTRANCE-QR-001"
@@ -27,10 +31,14 @@ object AppConfig {
     const val DEFAULT_CONSISTENCY_WEEKS_BADGE = 4
 
     // Default plan metadata for starter membership cycles
-    const val DEFAULT_PLAN_NAME = "GymPulse All-Access Pro"
+    const val DEFAULT_PLAN_NAME = "Gymimpulse All-Access Pro"
     const val DEFAULT_MONTHLY_FEE_USD = 69.0
+
+    // SHA-256 digest of the Gym Admin unlock passcode
+    const val ADMIN_PASSCODE_SHA256 =
+        "dc1ebf74473cba59c8917a0aa2829371320b9cff6f56df96fa77c21ba1a82085"
 
     // Feature flags
     const val ENABLE_PHASE_2_CLOUD_SYNC = true
-    const val ENABLE_PHASE_3_ADMIN_PORTAL = false
+    const val ENABLE_PHASE_3_ADMIN_PORTAL = true
 }

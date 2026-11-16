@@ -1,5 +1,6 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 import java.time.Duration
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -14,11 +15,28 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
+    val versionPropsFile = rootProject.file("version.properties")
+    val versionProps = Properties()
+    if (versionPropsFile.exists()) {
+      versionPropsFile.inputStream().use { stream -> versionProps.load(stream) }
+    }
+    val resolvedVersionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull()
+      ?: versionProps.getProperty("VERSION_CODE")?.toIntOrNull()
+      ?: 1
+    val resolvedVersionName = System.getenv("APP_VERSION_NAME")?.takeIf { it.isNotBlank() }
+      ?: versionProps.getProperty("VERSION_NAME")?.takeIf { it.isNotBlank() }
+      ?: "1.0.0"
+    val githubRepoSlug = (System.getenv("GITHUB_REPOSITORY") ?: "")
+      .replace("\"", "")
+      .trim()
+
     applicationId = "com.aistudio.gympulse.kxmpzq"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = resolvedVersionCode
+    versionName = resolvedVersionName
+
+    buildConfigField("String", "GITHUB_REPO", "\"$githubRepoSlug\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

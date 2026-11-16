@@ -249,3 +249,152 @@ test("Email spoofing test: Unverified admin email cannot write announcements", a
     })
   );
 });
+
+test("Phase 3 Admin boundaries: Normal member cannot read audit logs, QR events, or collectionGroup data", async () => {
+  const aliceDb = getDb(testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }));
+
+  await assertFails(aliceDb.collection("admin_audit_logs").get());
+  await assertFails(aliceDb.collection("qr_security_events").get());
+  await assertFails(aliceDb.collectionGroup("attendance").get());
+  await assertFails(aliceDb.collectionGroup("payment_requests").get());
+
+  await assertFails(
+    aliceDb.collection("competition_configs").doc("attendance_streak").set({
+      categoryId: "ATTENDANCE_STREAK",
+      title: "Attendance Streak",
+      periodLabel: "Nov 2026",
+      targetDescription: "5 days",
+      targetValue: 5,
+      rewardTitle: "Free Month",
+      isActive: true,
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  await assertFails(
+    aliceDb.collection("promotional_offers").doc("offer_hack").set({
+      title: "Free Year",
+      subtitle: "Hack",
+      badgeText: "HACK",
+      validUntilLabel: "Forever",
+      targetAudience: "ALL_MEMBERS",
+      isActive: true,
+      createdAt: serverTimestamp(),
+    })
+  );
+
+  await assertFails(
+    aliceDb.collection("notifications_broadcast").doc("notif_hack").set({
+      title: "Hacked",
+      message: "Bad",
+      type: "GENERAL",
+      audience: "ALL_MEMBERS",
+      isUrgent: true,
+      createdByAdminUid: ALICE_UID,
+      createdAt: serverTimestamp(),
+    })
+  );
+
+  // Member CAN log their own blocked QR scan event for admin security review
+  await assertSucceeds(
+    aliceDb.collection("qr_security_events").doc("evt_alice_1").set({
+      userId: ALICE_UID,
+      memberName: "Alice Vance",
+      memberCode: "GP-1001",
+      eventType: "EXPIRED_TOKEN",
+      reason: "Expired QR screenshot",
+      reviewed: false,
+      createdAt: serverTimestamp(),
+    })
+  );
+});
+
+test("Phase 3 Admin permissions: Verified admin can verify payments, query collectionGroups, configure competitions, publish engagement & audit logs", async () => {
+  const adminUid = "admin_max_001";
+  const adminDb = getDb(
+    testEnv.authenticatedContext(adminUid, {
+      email: "hereyourmax@gmail.com",
+      email_verified: true,
+    })
+  );
+  const aliceDb = getDb(testEnv.authenticatedContext(ALICE_UID, { email: "alice@test.com", email_verified: true }));
+
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      memberCode: "GP-1001",
+      fullName: "Alice Vance",
+      email: "alice@test.com",
+      role: "MEMBER",
+      joinedDate: "Nov 16, 2026",
+      referralCode: "GP-REF-1",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Admin reads collectionGroups and user list
+  await assertSucceeds(adminDb.collection("users").get());
+  await assertSucceeds(adminDb.collectionGroup("attendance").get());
+  await assertSucceeds(adminDb.collectionGroup("payment_requests").get());
+
+  // Admin writes competition config, promotional offer, announcement, broadcast, and immutable audit log
+  await assertSucceeds(
+    adminDb.collection("competition_configs").doc("attendance_streak").set({
+      categoryId: "ATTENDANCE_STREAK",
+      title: "Attendance Streak",
+      periodLabel: "November 2026",
+      targetDescription: "Longest consecutive gym check-in streak",
+      targetValue: 20,
+      rewardTitle: "1 Month Pro + Hoodie",
+      isActive: true,
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  await assertSucceeds(
+    adminDb.collection("promotional_offers").doc("offer_winter").set({
+      title: "Winter Renewal Bonus",
+      subtitle: "Renew 3 days early and get a recovery session.",
+      badgeText: "20% OFF PT",
+      discountCode: "WINTER20",
+      validUntilLabel: "Nov 30, 2026",
+      targetAudience: "ALL_MEMBERS",
+      isActive: true,
+      createdAt: serverTimestamp(),
+    })
+  );
+
+  await assertSucceeds(
+    adminDb.collection("notifications_broadcast").doc("notif_1").set({
+      title: "Holiday Hours",
+      message: "Club closes at 4 PM on Nov 26.",
+      type: "IMPORTANT_UPDATE",
+      audience: "ALL_MEMBERS",
+      isUrgent: true,
+      createdByAdminUid: adminUid,
+      createdAt: serverTimestamp(),
+    })
+  );
+
+  await assertSucceeds(
+    adminDb.collection("admin_audit_logs").doc("log_1").set({
+      adminUserId: adminUid,
+      adminEmail: "hereyourmax@gmail.com",
+      actionType: "PUBLISH_OFFER",
+      targetId: "offer_winter",
+      summary: "Published Winter Renewal Bonus offer",
+      createdAt: serverTimestamp(),
+    })
+  );
+
+  // Audit logs are immutable even to admin
+  await assertFails(adminDb.collection("admin_audit_logs").doc("log_1").update({ summary: "Altered" }));
+  await assertFails(adminDb.collection("admin_audit_logs").doc("log_1").delete());
+
+  // Signed-in member can read published configs, offers & broadcasts
+  await assertSucceeds(aliceDb.collection("competition_configs").get());
+  await assertSucceeds(aliceDb.collection("promotional_offers").get());
+  await assertSucceeds(aliceDb.collection("notifications_broadcast").get());
+});
+

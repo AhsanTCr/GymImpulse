@@ -1,0 +1,178 @@
+name: Auto Build & Release Gymimpulse APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - '.github/workflows/**'
+      - 'version.properties'
+      - '*.md'
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type (patch, minor, major, none)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - none
+
+permissions:
+  contents: write
+
+jobs:
+  build_and_release:
+    name: Bump Version, Build APK & Publish GitHub Release
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && !startsWith(github.event.head_commit.message, 'chore(release):')"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Auto-increment app version
+        id: version
+        run: |
+          if [ -f version.properties ]; then
+            CURRENT_CODE=$(grep '^VERSION_CODE=' version.properties | cut -d'=' -f2 | tr -d '[:space:]')
+            CURRENT_NAME=$(grep '^VERSION_NAME=' version.properties | cut -d'=' -f2 | tr -d '[:space:]')
+          else
+            CURRENT_CODE=1
+            CURRENT_NAME="1.0.0"
+          fi
+
+          BUMP="${{ github.event.inputs.bump_type || 'patch' }}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_NAME"
+          MAJOR=${MAJOR:-1}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+
+          if [ "$BUMP" = "none" ]; then
+            NEW_CODE=$CURRENT_CODE
+            NEW_NAME="$MAJOR.$MINOR.$PATCH"
+          else
+            NEW_CODE=$((CURRENT_CODE + 1))
+            case "$BUMP" in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              *)
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+            NEW_NAME="$MAJOR.$MINOR.$PATCH"
+          fi
+
+          cat <<EOF > version.properties
+          VERSION_CODE=$NEW_CODE
+          VERSION_NAME=$NEW_NAME
+          EOF
+
+          echo "NEW_VERSION_CODE=$NEW_CODE" >> "$GITHUB_ENV"
+          echo "NEW_VERSION_NAME=$NEW_NAME" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v$NEW_NAME" >> "$GITHUB_ENV"
+          echo "Bumped version: $CURRENT_NAME ($CURRENT_CODE) -> $NEW_NAME ($NEW_CODE)"
+
+      - name: Commit bumped version & push tag
+        if: env.NEW_VERSION_NAME != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet version.properties; then
+            git add version.properties
+            git commit -m "chore(release): bump version to v${{ env.NEW_VERSION_NAME }} [skip ci]"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
+          if git rev-parse "${{ env.RELEASE_TAG }}" >/dev/null 2>&1; then
+            echo "Tag ${{ env.RELEASE_TAG }} already exists"
+          else
+            git tag "${{ env.RELEASE_TAG }}"
+            git push origin "${{ env.RELEASE_TAG }}"
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+          cache-read-only: false
+
+      - name: Configure signing keystores & Google services
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -f debug.keystore.base64 ] && [ ! -f debug.keystore ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" | base64 -d > app/google-services.json 2>/dev/null || echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
+          fi
+
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > my-upload-key.jks
+            echo "BUILD_TASK=assembleRelease" >> "$GITHUB_ENV"
+            echo "APK_GLOB=app/build/outputs/apk/release/*.apk" >> "$GITHUB_ENV"
+          else
+            echo "Release keystore secrets not set; falling back to debug-signed APK."
+            echo "BUILD_TASK=assembleDebug" >> "$GITHUB_ENV"
+            echo "APK_GLOB=app/build/outputs/apk/debug/*.apk" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Gymimpulse APK
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          APP_VERSION_CODE: ${{ env.NEW_VERSION_CODE }}
+          APP_VERSION_NAME: ${{ env.NEW_VERSION_NAME }}
+        run: gradle ${{ env.BUILD_TASK }} --no-daemon
+
+      - name: Package versioned APK artifact
+        run: |
+          mkdir -p release-artifacts
+          SOURCE_APK=$(ls ${{ env.APK_GLOB }} | head -n 1)
+          if [ -z "$SOURCE_APK" ]; then
+            echo "No APK found matching ${{ env.APK_GLOB }}"
+            exit 1
+          fi
+          TARGET_APK="release-artifacts/Gymimpulse-v${{ env.NEW_VERSION_NAME }}.apk"
+          cp "$SOURCE_APK" "$TARGET_APK"
+          echo "RELEASE_APK=$TARGET_APK" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Gymimpulse ${{ env.RELEASE_TAG }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: ${{ env.RELEASE_APK }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

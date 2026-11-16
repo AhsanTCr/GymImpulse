@@ -39,10 +39,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.database.AdminFirestoreRepository
 import com.example.database.MemberFirestoreRepository
 import com.example.database.UserProfileDoc
 import com.example.database.toFriendlyFirestoreMessage
-import com.example.features.admin.AdminPortalPlaceholderScreen
+import com.example.features.admin.AdminPasscodeGate
+import com.example.features.admin.AdminPortalRootScreen
+import com.example.features.admin.AdminViewModel
 import com.example.features.announcements.AnnouncementsScreen
 import com.example.features.announcements.AnnouncementsViewModel
 import com.example.features.attendance.QrAttendanceScreen
@@ -86,6 +89,7 @@ fun ApexPulseAppNavHost(
     val context = LocalContext.current
     val appContext = context.applicationContext
     val repository = remember(appContext) { MemberFirestoreRepository(appContext) }
+    val adminRepository = remember(appContext) { AdminFirestoreRepository(appContext) }
 
     var splashFinished by remember { mutableStateOf(false) }
     val firebaseUser by GymAuthManager.authStateFlow()
@@ -160,6 +164,12 @@ fun ApexPulseAppNavHost(
                 }
         }.collectAsStateWithLifecycle(initialValue = ProfileGateState.Loading)
 
+        val isBackendAdminState by remember(uid) {
+            adminRepository.observeIsAdminAuthorized(uid)
+                .map<Boolean, Boolean?> { it }
+                .catch { emit(false) }
+        }.collectAsStateWithLifecycle(initialValue = null)
+
         when (val currentGate = gateState) {
             ProfileGateState.Loading -> {
                 Box(
@@ -216,8 +226,29 @@ fun ApexPulseAppNavHost(
             }
 
             is ProfileGateState.Resolved -> {
+                val resolvedAdmin = isBackendAdminState
                 val profileDoc = currentGate.profile
-                if (profileDoc == null) {
+                if (resolvedAdmin == null) {
+                    Box(
+                        modifier = modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            ApexPulseLogo(size = 56.dp)
+                            CircularProgressIndicator()
+                            Text(
+                                text = "Verifying club access...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else if (profileDoc == null) {
                     LaunchedEffect(uid) {
                         authViewModel.prefillRegistrationFromUser(
                             displayName = activeUser.displayName.orEmpty(),
@@ -234,8 +265,10 @@ fun ApexPulseAppNavHost(
                 } else {
                     AuthenticatedMemberNavShell(
                         uid = uid,
-                        isAdminRole = profileDoc.role.equals("ADMIN", ignoreCase = true),
+                        userEmail = activeUser.email.orEmpty(),
+                        isBackendAdminAuthorized = resolvedAdmin || profileDoc.role.equals("ADMIN", ignoreCase = true) && false,
                         repository = repository,
+                        adminRepository = adminRepository,
                         authViewModel = authViewModel,
                         currentThemeMode = currentThemeMode,
                         onChangeThemeMode = onChangeThemeMode,
@@ -250,8 +283,10 @@ fun ApexPulseAppNavHost(
 @Composable
 private fun AuthenticatedMemberNavShell(
     uid: String,
-    isAdminRole: Boolean,
+    userEmail: String,
+    isBackendAdminAuthorized: Boolean,
     repository: MemberFirestoreRepository,
+    adminRepository: AdminFirestoreRepository,
     authViewModel: AuthViewModel,
     currentThemeMode: AppThemeMode,
     onChangeThemeMode: (AppThemeMode) -> Unit,
@@ -325,7 +360,7 @@ private fun AuthenticatedMemberNavShell(
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = if (isAdminRole) AppRoutes.ROUTE_ADMIN_PORTAL else AppRoutes.ROUTE_MEMBER_HOME,
+            startDestination = if (isBackendAdminAuthorized) AppRoutes.ROUTE_ADMIN_PORTAL else AppRoutes.ROUTE_MEMBER_HOME,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
@@ -364,6 +399,7 @@ private fun AuthenticatedMemberNavShell(
                     onChangeThemeMode = onChangeThemeMode,
                     onNavigateToMembership = { navController.navigate(AppRoutes.ROUTE_MY_MEMBERSHIP) },
                     onNavigateToAppUpdates = { navController.navigate(AppRoutes.ROUTE_APP_UPDATES) },
+                    isAdminAuthorized = isBackendAdminAuthorized,
                     onNavigateToAdminPreview = { navController.navigate(AppRoutes.ROUTE_ADMIN_PORTAL) },
                     onLogout = { authViewModel.signOut(context) }
                 )
@@ -391,13 +427,42 @@ private fun AuthenticatedMemberNavShell(
             }
 
             composable(AppRoutes.ROUTE_ADMIN_PORTAL) {
-                AdminPortalPlaceholderScreen(
-                    onNavigateBack = {
-                        if (!navController.popBackStack()) {
-                            navigateToMemberTab(AppRoutes.ROUTE_MEMBER_HOME)
-                        }
-                    }
-                )
+                if (isBackendAdminAuthorized) {
+                    val adminViewModel: AdminViewModel = viewModel(
+                        key = "admin_$uid",
+                        factory = viewModelFactory { initializer { AdminViewModel(adminRepository, uid) } }
+                    )
+                    AdminPortalRootScreen(
+                        isBackendAdminAuthorized = true,
+                        adminEmail = userEmail,
+                        viewModel = adminViewModel,
+                        onSwitchToMemberView = {
+                            if (!navController.popBackStack(AppRoutes.ROUTE_MEMBER_HOME, inclusive = false)) {
+                                navController.navigate(AppRoutes.ROUTE_MEMBER_HOME) {
+                                    popUpTo(AppRoutes.ROUTE_ADMIN_PORTAL) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
+                        onLogout = { authViewModel.signOut(context) }
+                    )
+                } else {
+                    AdminPasscodeGate(
+                        isBackendAdminAuthorized = false,
+                        adminEmail = userEmail,
+                        passcodeError = null,
+                        onUnlockWithPasscode = {},
+                        onSwitchToMemberView = {
+                            if (!navController.popBackStack(AppRoutes.ROUTE_MEMBER_HOME, inclusive = false)) {
+                                navController.navigate(AppRoutes.ROUTE_MEMBER_HOME) {
+                                    popUpTo(AppRoutes.ROUTE_ADMIN_PORTAL) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
+                        onLogout = { authViewModel.signOut(context) }
+                    )
+                }
             }
         }
     }

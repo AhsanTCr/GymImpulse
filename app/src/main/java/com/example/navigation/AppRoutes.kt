@@ -20,8 +20,8 @@ object AppRoutes {
     const val ROUTE_ANNOUNCEMENTS = "announcements"
     const val ROUTE_APP_UPDATES = "app_updates"
 
-    // Reserved Phase 3 Admin module route
-    const val ROUTE_ADMIN_PORTAL = "admin_portal_reserved"
+    // Phase 3 Admin Dashboard route
+    const val ROUTE_ADMIN_PORTAL = "admin_portal"
 
     val bottomBarRoutes = setOf(
         ROUTE_MEMBER_HOME,

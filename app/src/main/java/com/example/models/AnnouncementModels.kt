@@ -14,6 +14,9 @@ data class GymAnnouncement(
     val dateLabel: String,
     val category: AnnouncementCategory,
     val isImportant: Boolean,
+    val isPublished: Boolean = true,
+    val scheduledAtLabel: String? = null,
     val bannerDrawableRes: Int? = null,
+    val bannerImageData: String? = null,
     val ctaLabel: String? = null
 )

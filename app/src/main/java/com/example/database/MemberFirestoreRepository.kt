@@ -642,11 +642,117 @@ class MemberFirestoreRepository(
                     .snapshots()
                     .map { snapshot ->
                         snapshot.toObjects(AnnouncementDoc::class.java, ServerTimestampBehavior.ESTIMATE)
+                            .filter { it.isPublished }
                             .sortedByDescending { it.createdAt?.seconds ?: 0L }
                     }
                     .handleSnapshotErrors(OperationType.LIST, path, null)
             )
         }
+    }
+
+    fun observeCompetitionConfigs(): Flow<List<CompetitionConfigDoc>> {
+        val path = "competition_configs"
+        return flow {
+            requireUserId()
+            emitAll(
+                db.collection(path)
+                    .snapshots()
+                    .map { snapshot ->
+                        snapshot.toObjects(CompetitionConfigDoc::class.java, ServerTimestampBehavior.ESTIMATE)
+                    }
+                    .handleSnapshotErrors(OperationType.LIST, path, null)
+            )
+        }
+    }
+
+    fun observePromotionalOffers(): Flow<List<PromotionalOfferDoc>> {
+        val path = "promotional_offers"
+        return flow {
+            requireUserId()
+            emitAll(
+                db.collection(path)
+                    .snapshots()
+                    .map { snapshot ->
+                        snapshot.toObjects(PromotionalOfferDoc::class.java, ServerTimestampBehavior.ESTIMATE)
+                            .filter { it.isActive }
+                            .sortedByDescending { it.createdAt?.seconds ?: 0L }
+                    }
+                    .handleSnapshotErrors(OperationType.LIST, path, null)
+            )
+        }
+    }
+
+    fun observeBroadcastNotifications(): Flow<List<BroadcastNotificationDoc>> {
+        val path = "notifications_broadcast"
+        return flow {
+            requireUserId()
+            emitAll(
+                db.collection(path)
+                    .snapshots()
+                    .map { snapshot ->
+                        snapshot.toObjects(BroadcastNotificationDoc::class.java, ServerTimestampBehavior.ESTIMATE)
+                            .sortedByDescending { it.createdAt?.seconds ?: 0L }
+                    }
+                    .handleSnapshotErrors(OperationType.LIST, path, null)
+            )
+        }
+    }
+
+    fun observeGymConfig(): Flow<GymConfigDoc?> {
+        val path = "gym_config/main_entrance"
+        return flow {
+            requireUserId()
+            emitAll(
+                db.collection("gym_config").document("main_entrance")
+                    .snapshots()
+                    .map { snap ->
+                        if (snap.exists()) snap.toObject(GymConfigDoc::class.java, ServerTimestampBehavior.ESTIMATE)
+                        else null
+                    }
+                    .handleSnapshotErrors(OperationType.GET, path, null)
+            )
+        }
+    }
+
+    fun observeAppConfig(): Flow<AppConfigDoc?> {
+        val path = "app_config/current"
+        return flow {
+            requireUserId()
+            emitAll(
+                db.collection("app_config").document("current")
+                    .snapshots()
+                    .map { snap ->
+                        if (snap.exists()) snap.toObject(AppConfigDoc::class.java, ServerTimestampBehavior.ESTIMATE)
+                        else null
+                    }
+                    .handleSnapshotErrors(OperationType.GET, path, null)
+            )
+        }
+    }
+
+    suspend fun logQrSecurityEvent(
+        memberName: String,
+        memberCode: String?,
+        eventType: String,
+        reason: String,
+        rawCodePrefix: String?,
+        distanceMeters: Double?
+    ) {
+        val uid = auth.currentUser?.uid ?: return
+        val eventId = "qre_${UUID.randomUUID().toString().replace("-", "").take(12)}"
+        val docRef = db.collection("qr_security_events").document(eventId)
+        val payload = QrSecurityEventDoc(
+            id = eventId,
+            userId = uid,
+            memberName = memberName.ifBlank { "Member" }.take(80),
+            memberCode = memberCode?.take(32),
+            eventType = eventType,
+            reason = reason.take(260),
+            rawCodePrefix = rawCodePrefix?.take(64),
+            distanceMeters = distanceMeters,
+            reviewed = false
+        ).toCreateMap()
+        runCatching { docRef.set(payload).await() }
     }
 
     fun observeMyReferrals(userId: String): Flow<List<ReferralRecordDoc>> {

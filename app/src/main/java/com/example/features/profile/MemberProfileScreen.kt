@@ -86,6 +86,7 @@ fun MemberProfileScreen(
     onChangeThemeMode: (AppThemeMode) -> Unit,
     onNavigateToMembership: () -> Unit,
     onNavigateToAppUpdates: () -> Unit,
+    isAdminAuthorized: Boolean = false,
     onNavigateToAdminPreview: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
@@ -540,15 +541,17 @@ fun MemberProfileScreen(
                             testTag = "profile_app_updates_row",
                             onClick = onNavigateToAppUpdates
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        ProfileActionRow(
-                            icon = Icons.Rounded.AdminPanelSettings,
-                            title = "Gym Admin Portal (Phase 3)",
-                            subtitle = "Reserved architecture preview",
-                            accentColor = semantic.warningAmber,
-                            testTag = "profile_admin_preview_row",
-                            onClick = onNavigateToAdminPreview
-                        )
+                        if (isAdminAuthorized) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            ProfileActionRow(
+                                icon = Icons.Rounded.AdminPanelSettings,
+                                title = "Gymimpulse Admin Console",
+                                subtitle = "Passcode-protected club management",
+                                accentColor = semantic.warningAmber,
+                                testTag = "profile_admin_preview_row",
+                                onClick = onNavigateToAdminPreview
+                            )
+                        }
                     }
                 }
             }
