@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">GymPulse</string>
+    <string name="app_tagline">TRAIN • TRACK • COMPETE</string>
+    <string name="gym_name">ApexPulse Performance Club</string>
+    <string name="cd_app_logo">ApexPulse emblem</string>
+    <string name="cd_member_avatar">Member profile picture</string>
+    <string name="cd_qr_scanner">Gym entrance QR scanner</string>
+    <string name="cd_back_button">Navigate back</string>
+    <string name="cd_notifications">Notifications</string>
+    <string name="cd_announcement_image">Gym announcement banner</string>
+</resources>

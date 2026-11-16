@@ -1,0 +1,272 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private member account profile containing PII isolated to the owning user or gym admin.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the member" },
+        "memberCode": { "type": "string", "description": "Unique human-readable club ID such as APX-1042" },
+        "fullName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "avatarData": { "type": "string", "description": "Optional photo URL or compressed base64 JPEG" },
+        "role": { "type": "string", "enum": ["MEMBER", "ADMIN"] },
+        "joinedDate": { "type": "string" },
+        "fitnessGoal": { "type": "string" },
+        "referralCode": { "type": "string" },
+        "referredByCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()" }
+      },
+      "required": ["userId", "memberCode", "fullName", "email", "role", "joinedDate", "referralCode", "createdAt", "updatedAt"]
+    },
+    "MembershipRecord": {
+      "title": "MembershipRecord",
+      "description": "Member's active membership plan, cycle dates anchored to verified payment date, and status.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "planName": { "type": "string" },
+        "monthlyFeeUsd": { "type": "number" },
+        "membershipStartDate": { "type": "string" },
+        "cycleStartDate": { "type": "string" },
+        "cycleEndDate": { "type": "string" },
+        "nextRenewalDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "EXPIRING_SOON", "EXPIRED", "PAYMENT_OVERDUE"] },
+        "autoRenewEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "planName", "monthlyFeeUsd", "membershipStartDate", "cycleStartDate", "cycleEndDate", "nextRenewalDate", "status", "autoRenewEnabled", "updatedAt"]
+    },
+    "PaymentRequest": {
+      "title": "PaymentRequest",
+      "description": "Member-submitted payment notification requiring gym verification before cycle renewal.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "memberCode": { "type": "string" },
+        "amountFormatted": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "referenceNote": { "type": "string" },
+        "paymentDateLabel": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING_VERIFICATION", "VERIFIED", "REJECTED"] },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "memberName", "memberCode", "amountFormatted", "paymentMethod", "paymentDateLabel", "status", "isVerified", "createdAt"]
+    },
+    "PaymentRecord": {
+      "title": "PaymentRecord",
+      "description": "Verified historical gym payment record authorized by backend/admin.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "paymentDate": { "type": "string" },
+        "cycleCovered": { "type": "string" },
+        "amountFormatted": { "type": "string" },
+        "method": { "type": "string" },
+        "referenceNumber": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "paymentDate", "cycleCovered", "amountFormatted", "method", "referenceNumber", "isVerified", "createdAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Verified daily check-in from the common gym entrance QR code, keyed by YYYY-MM-DD.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "dateKey": { "type": "string" },
+        "dateLabel": { "type": "string" },
+        "checkInTime": { "type": "string" },
+        "zoneLabel": { "type": "string" },
+        "gymCode": { "type": "string" },
+        "verificationToken": { "type": "string" },
+        "verifiedViaCommonQr": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "dateKey", "dateLabel", "checkInTime", "zoneLabel", "gymCode", "verificationToken", "verifiedViaCommonQr", "createdAt"]
+    },
+    "DailyFoodLog": {
+      "title": "DailyFoodLog",
+      "description": "Daily healthy food and protein log keyed by YYYY-MM-DD.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "dateKey": { "type": "string" },
+        "dateLabel": { "type": "string" },
+        "takenFoodIds": { "type": "array" },
+        "servingsByFood": { "type": "object" },
+        "totalProteinGrams": { "type": "integer" },
+        "totalCalories": { "type": "integer" },
+        "foodsCount": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "dateKey", "dateLabel", "takenFoodIds", "totalProteinGrams", "totalCalories", "foodsCount", "updatedAt"]
+    },
+    "MemberSettings": {
+      "title": "MemberSettings",
+      "description": "Member notification and nutrition reminder preferences.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "attendanceReminders": { "type": "boolean" },
+        "nutritionGoalReminders": { "type": "boolean" },
+        "membershipExpiryAlerts": { "type": "boolean" },
+        "gymAnnouncements": { "type": "boolean" },
+        "leaderboardUpdates": { "type": "boolean" },
+        "morningFuelEnabled": { "type": "boolean" },
+        "postWorkoutProteinEnabled": { "type": "boolean" },
+        "eveningCheckInEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "attendanceReminders", "nutritionGoalReminders", "membershipExpiryAlerts", "gymAnnouncements", "leaderboardUpdates", "updatedAt"]
+    },
+    "LeaderboardStat": {
+      "title": "LeaderboardStat",
+      "description": "Public display leaderboard entry without PII.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "avatarData": { "type": "string" },
+        "currentStreakDays": { "type": "integer" },
+        "longestStreakDays": { "type": "integer" },
+        "monthlyVisits": { "type": "integer" },
+        "weeklyTargetMetWeeks": { "type": "integer" },
+        "healthyHabitsScore": { "type": "integer" },
+        "verifiedReferralsCount": { "type": "integer" },
+        "isMonthlyWinner": { "type": "boolean" },
+        "monthKey": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "memberName", "currentStreakDays", "longestStreakDays", "monthlyVisits", "weeklyTargetMetWeeks", "healthyHabitsScore", "verifiedReferralsCount", "isMonthlyWinner", "monthKey", "updatedAt"]
+    },
+    "LeaderboardHistory": {
+      "title": "LeaderboardHistory",
+      "description": "Archived monthly club winner records.",
+      "type": "object",
+      "properties": {
+        "monthKey": { "type": "string" },
+        "category": { "type": "string" },
+        "winnerName": { "type": "string" },
+        "scoreLabel": { "type": "string" }
+      },
+      "required": ["monthKey", "category", "winnerName", "scoreLabel"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Club announcements, events, and competition notices.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "dateLabel": { "type": "string" },
+        "category": { "type": "string", "enum": ["IMPORTANT", "EVENT", "COMPETITION"] },
+        "isImportant": { "type": "boolean" },
+        "imageKey": { "type": "string" },
+        "ctaLabel": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "dateLabel", "category", "isImportant", "createdAt"]
+    },
+    "GymConfig": {
+      "title": "GymConfig",
+      "description": "Gym entrance QR verification and perimeter settings.",
+      "type": "object",
+      "properties": {
+        "gymId": { "type": "string" },
+        "gymName": { "type": "string" },
+        "staticEntranceCode": { "type": "string" },
+        "rotationWindowSeconds": { "type": "integer" },
+        "gymLatitude": { "type": "number" },
+        "gymLongitude": { "type": "number" },
+        "allowedRadiusMeters": { "type": "number" }
+      },
+      "required": ["gymId", "gymName", "staticEntranceCode", "rotationWindowSeconds"]
+    },
+    "ReferralRecord": {
+      "title": "ReferralRecord",
+      "description": "Member referral record awaiting gym verification.",
+      "type": "object",
+      "properties": {
+        "referrerUserId": { "type": "string" },
+        "referrerCode": { "type": "string" },
+        "referredUserId": { "type": "string" },
+        "referredName": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING_VERIFICATION", "VERIFIED", "REJECTED"] },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["referrerCode", "referredUserId", "referredName", "status", "isVerified", "createdAt"]
+    },
+    "AppConfigDoc": {
+      "title": "AppConfigDoc",
+      "description": "Remote app version and update highlights metadata.",
+      "type": "object",
+      "properties": {
+        "latestVersion": { "type": "string" },
+        "releaseDate": { "type": "string" },
+        "releaseHighlights": { "type": "array" }
+      },
+      "required": ["latestVersion", "releaseDate", "releaseHighlights"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private member profile & PII document"
+    },
+    "/users/{userId}/memberships/{membershipId}": {
+      "schema": { "$ref": "#/entities/MembershipRecord" },
+      "description": "Member subscription cycle & status document"
+    },
+    "/users/{userId}/payment_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/PaymentRequest" },
+      "description": "Unverified member payment notification requests"
+    },
+    "/users/{userId}/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/PaymentRecord" },
+      "description": "Verified payment history records"
+    },
+    "/users/{userId}/attendance/{dateKey}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Immutable daily entrance QR check-in records"
+    },
+    "/users/{userId}/food_logs/{dateKey}": {
+      "schema": { "$ref": "#/entities/DailyFoodLog" },
+      "description": "Daily healthy food & protein tracking logs"
+    },
+    "/users/{userId}/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/MemberSettings" },
+      "description": "Notification and reminder preferences"
+    },
+    "/leaderboard_stats/{userId}": {
+      "schema": { "$ref": "#/entities/LeaderboardStat" },
+      "description": "Public non-PII club leaderboard statistics"
+    },
+    "/leaderboard_history/{historyId}": {
+      "schema": { "$ref": "#/entities/LeaderboardHistory" },
+      "description": "Historical monthly club winner records"
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Gym announcements, events, and competition posts"
+    },
+    "/gym_config/{configId}": {
+      "schema": { "$ref": "#/entities/GymConfig" },
+      "description": "Common entrance QR verification settings"
+    },
+    "/referrals/{referralId}": {
+      "schema": { "$ref": "#/entities/ReferralRecord" },
+      "description": "Member referral tracking & verification"
+    },
+    "/app_config/{docId}": {
+      "schema": { "$ref": "#/entities/AppConfigDoc" },
+      "description": "Remote app update metadata"
+    }
+  }
+}

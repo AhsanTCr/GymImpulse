@@ -1,0 +1,9 @@
+{
+  "gymName": "ApexPulse Performance Club",
+  "capacity": 240,
+  "entranceQrCodeId": "APEXPULSE-MAIN-ENTRANCE-QR-001",
+  "defaultDailyProteinGoalGrams": 140,
+  "defaultDailyFoodItemsTarget": 7,
+  "appVersion": "1.0.0",
+  "phase": "PHASE_1_UI_ARCHITECTURE"
+}
