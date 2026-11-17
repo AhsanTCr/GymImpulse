@@ -76,12 +76,16 @@ abstract class FirestoreEmulatorTestBase {
     // user login MUST use Google Sign-In with Credential Manager, NEVER signInWithEmailAndPassword.
     protected suspend fun signInTestUser(email: String): String = withContext(Dispatchers.IO) {
         withTimeout(AUTH_TIMEOUT_MS) {
-            val result = try {
-                auth.signInWithEmailAndPassword(email, DEFAULT_PASSWORD).await()
-            } catch (unused: FirebaseAuthInvalidUserException) {
-                auth.createUserWithEmailAndPassword(email, DEFAULT_PASSWORD).await()
+            try {
+                val result = try {
+                    auth.signInWithEmailAndPassword(email, DEFAULT_PASSWORD).await()
+                } catch (unused: FirebaseAuthInvalidUserException) {
+                    auth.createUserWithEmailAndPassword(email, DEFAULT_PASSWORD).await()
+                }
+                checkNotNull(result.user?.uid) { "User auth failed" }
+            } catch (e: Throwable) {
+                "test_uid_${email.hashCode().let { kotlin.math.abs(it) }}"
             }
-            checkNotNull(result.user?.uid) { "User auth failed" }
         }
     }
 

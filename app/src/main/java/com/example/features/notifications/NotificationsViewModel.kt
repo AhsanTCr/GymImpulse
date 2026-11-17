@@ -67,7 +67,7 @@ class NotificationsViewModel(
         val sent = NotificationHelper.showReminderNotification(
             context = context,
             notificationId = 2001,
-            title = "GymPulse Daily Reminder",
+            title = "Gymimpulse Daily Reminder",
             body = "Keep your streak alive! Scan the entrance QR at reception and log your daily protein."
         )
         _statusMessage.value = if (sent) {

@@ -20,7 +20,7 @@ object AppRoutes {
     const val ROUTE_ANNOUNCEMENTS = "announcements"
     const val ROUTE_APP_UPDATES = "app_updates"
 
-    // Phase 3 Admin Dashboard route
+    // Admin Dashboard route
     const val ROUTE_ADMIN_PORTAL = "admin_portal"
 
     val bottomBarRoutes = setOf(

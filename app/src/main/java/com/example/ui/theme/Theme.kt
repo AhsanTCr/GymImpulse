@@ -32,118 +32,69 @@ data class GymSemanticColors(
 val LocalGymSemanticColors = staticCompositionLocalOf {
     GymSemanticColors(
         activeGreen = EmeraldActive,
-        activeGreenContainer = EmeraldContainerDark,
-        warningAmber = AmberWarning,
-        warningAmberContainer = AmberContainerDark,
+        activeGreenContainer = EmeraldContainerLight,
+        warningAmber = SunlitHoneyGold,
+        warningAmberContainer = AmberContainerLight,
         alertCoral = CoralAlert,
-        alertCoralContainer = CoralContainerDark,
-        infoCyan = CyanInfo,
-        infoCyanContainer = CyanContainerDark,
-        accentVolt = VoltLime,
-        onAccentVolt = OnVoltLime,
-        isDark = true
+        alertCoralContainer = CoralContainerLight,
+        infoCyan = CyanAzure,
+        infoCyanContainer = CyanContainerLight,
+        accentVolt = RoyalSkyBlue,
+        onAccentVolt = PureIceWhite,
+        isDark = false
     )
 }
 
-private val ApexDarkColorScheme = darkColorScheme(
-    primary = VoltLime,
-    onPrimary = OnVoltLime,
-    primaryContainer = VoltLimeContainer,
-    onPrimaryContainer = VoltLime,
-    secondary = CyanInfo,
-    onSecondary = ObsidianBg,
-    secondaryContainer = CyanContainerDark,
-    onSecondaryContainer = CyanInfo,
-    tertiary = AmberWarning,
-    onTertiary = ObsidianBg,
-    tertiaryContainer = AmberContainerDark,
-    onTertiaryContainer = AmberWarning,
-    background = ObsidianBg,
-    onBackground = PureIceWhite,
-    surface = CarbonSurface,
-    onSurface = PureIceWhite,
-    surfaceVariant = SlateSurfaceElevated,
-    onSurfaceVariant = SlateTextMuted,
-    outline = SlateOutline,
-    outlineVariant = Color(0xFF202838),
+// Luminous Sky-Luxury Theme Color Scheme (Zero black, zero harsh dark backgrounds)
+private val SkyLuxuryColorScheme = lightColorScheme(
+    primary = RoyalSkyBlue,
+    onPrimary = PureIceWhite,
+    primaryContainer = PastelSkyCard,
+    onPrimaryContainer = DeepRoyalInk,
+    secondary = CyanAzure,
+    onSecondary = PureIceWhite,
+    secondaryContainer = PastelSkyCard,
+    onSecondaryContainer = DeepRoyalInk,
+    tertiary = OrchidLavender,
+    onTertiary = PureIceWhite,
+    tertiaryContainer = PastelSkyCard,
+    onTertiaryContainer = DeepRoyalInk,
+    background = SkyAzureCanvas,
+    onBackground = DeepRoyalInk,
+    surface = PastelSkySurface,
+    onSurface = DeepRoyalInk,
+    surfaceVariant = PastelSkyCard,
+    onSurfaceVariant = RichSapphireInk,
+    outline = OutlinePastelBlue,
+    outlineVariant = OutlineGold,
     error = CoralAlert,
     onError = PureIceWhite,
-    errorContainer = CoralContainerDark,
-    onErrorContainer = CoralAlert
-)
-
-private val ApexLightColorScheme = lightColorScheme(
-    primary = ForestPrimary,
-    onPrimary = OnForestPrimary,
-    primaryContainer = ForestPrimaryContainer,
-    onPrimaryContainer = ForestPrimary,
-    secondary = Color(0xFF0284C7),
-    onSecondary = Color.White,
-    secondaryContainer = CyanContainerLight,
-    onSecondaryContainer = Color(0xFF075985),
-    tertiary = Color(0xFFD97706),
-    onTertiary = Color.White,
-    tertiaryContainer = AmberContainerLight,
-    onTertiaryContainer = Color(0xFF92400E),
-    background = DaylightBg,
-    onBackground = InkDark,
-    surface = DaylightSurface,
-    onSurface = InkDark,
-    surfaceVariant = DaylightSurfaceVariant,
-    onSurfaceVariant = InkMuted,
-    outline = DaylightOutline,
-    outlineVariant = Color(0xFFE2E8F0),
-    error = CoralAlert,
-    onError = Color.White,
     errorContainer = CoralContainerLight,
-    onErrorContainer = Color(0xFF991B1B)
+    onErrorContainer = CoralAlert
 )
 
 @Composable
 fun ApexPulseTheme(
-    themeMode: AppThemeMode = AppThemeMode.DARK,
+    themeMode: AppThemeMode = AppThemeMode.LIGHT,
     content: @Composable () -> Unit
 ) {
-    val useDarkTheme = when (themeMode) {
-        AppThemeMode.DARK -> true
-        AppThemeMode.LIGHT -> false
-        AppThemeMode.SYSTEM -> isSystemInDarkTheme()
-    }
-
-    val colorScheme = if (useDarkTheme) ApexDarkColorScheme else ApexLightColorScheme
-    val semanticColors = if (useDarkTheme) {
-        GymSemanticColors(
-            activeGreen = EmeraldActive,
-            activeGreenContainer = EmeraldContainerDark,
-            warningAmber = AmberWarning,
-            warningAmberContainer = AmberContainerDark,
-            alertCoral = CoralAlert,
-            alertCoralContainer = CoralContainerDark,
-            infoCyan = CyanInfo,
-            infoCyanContainer = CyanContainerDark,
-            accentVolt = VoltLime,
-            onAccentVolt = OnVoltLime,
-            isDark = true
-        )
-    } else {
-        GymSemanticColors(
-            activeGreen = Color(0xFF15803D),
-            activeGreenContainer = EmeraldContainerLight,
-            warningAmber = Color(0xFFB45309),
-            warningAmberContainer = AmberContainerLight,
-            alertCoral = Color(0xFFDC2626),
-            alertCoralContainer = CoralContainerLight,
-            infoCyan = Color(0xFF0369A1),
-            infoCyanContainer = CyanContainerLight,
-            accentVolt = Color(0xFF65A30D),
-            onAccentVolt = Color.White,
-            isDark = false
-        )
-    }
+    val semanticColors = GymSemanticColors(
+        activeGreen = EmeraldActive,
+        activeGreenContainer = EmeraldContainerLight,
+        warningAmber = SunlitHoneyGold,
+        warningAmberContainer = AmberContainerLight,
+        alertCoral = CoralAlert,
+        alertCoralContainer = CoralContainerLight,
+        infoCyan = CyanAzure,
+        infoCyanContainer = CyanContainerLight,
+        accentVolt = RoyalSkyBlue,
+        onAccentVolt = PureIceWhite,
+        isDark = false
+    )
 
     CompositionLocalProvider(LocalGymSemanticColors provides semanticColors) {
         MaterialTheme(
-            colorScheme = colorScheme,
+            colorScheme = SkyLuxuryColorScheme,
             typography = ApexPulseTypography,
             shapes = ApexPulseShapes,
             content = content

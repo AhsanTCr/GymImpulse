@@ -2,7 +2,7 @@ package com.example.config
 
 /**
  * Central application configuration constants for Gymimpulse.
- * Phase 3 activates the role-gated & passcode-protected Admin Portal alongside full Member sync.
+ * Manages role authorization, entrance QR window settings, and gym defaults.
  */
 object AppConfig {
     const val APP_NAME = "Gymimpulse"

@@ -333,7 +333,7 @@ fun MemberProfileScreen(
                                     IconButton(
                                         onClick = {
                                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                            clipboard?.setPrimaryClip(ClipData.newPlainText("GymPulse Referral", state.referralCode))
+                                            clipboard?.setPrimaryClip(ClipData.newPlainText("Gymimpulse Referral", state.referralCode))
                                             copiedReferral = true
                                         },
                                         modifier = Modifier.testTag("profile_copy_referral_button")
@@ -546,7 +546,7 @@ fun MemberProfileScreen(
                             ProfileActionRow(
                                 icon = Icons.Rounded.AdminPanelSettings,
                                 title = "Gymimpulse Admin Console",
-                                subtitle = "Passcode-protected club management",
+                                subtitle = "Authorized staff & club operations",
                                 accentColor = semantic.warningAmber,
                                 testTag = "profile_admin_preview_row",
                                 onClick = onNavigateToAdminPreview

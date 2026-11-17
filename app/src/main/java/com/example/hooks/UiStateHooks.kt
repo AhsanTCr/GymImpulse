@@ -9,7 +9,7 @@ import androidx.compose.runtime.setValue
 import com.example.ui.theme.AppThemeMode
 
 /**
- * Standard UI state wrapper for asynchronous operations (ready for Phase 2 API/DB calls).
+ * Standard UI state wrapper for asynchronous operations.
  */
 sealed class UiState<out T> {
     data object Loading : UiState<Nothing>()

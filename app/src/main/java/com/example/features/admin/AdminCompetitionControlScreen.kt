@@ -169,7 +169,7 @@ fun AdminCompetitionControlScreen(
                 }
             }
 
-            // Pending Referral Verifications (Module 3 requirement)
+            // Pending Referral Verifications
             if (pendingReferrals.isNotEmpty()) {
                 item {
                     SectionHeader(title = "Pending Referral Claims (${pendingReferrals.size})")

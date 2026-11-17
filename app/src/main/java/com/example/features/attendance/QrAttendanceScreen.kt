@@ -308,7 +308,7 @@ fun QrAttendanceScreen(
             item {
                 InfoCalloutBanner(
                     title = "How Common Entrance QR Works",
-                    description = "All members scan the same physical QR code displayed at the GymPulse entrance desk. Rotating security tokens and daily duplicate guards protect your club streak.",
+                    description = "All members scan the same physical QR code displayed at the Gymimpulse entrance desk. Rotating security tokens and daily duplicate guards protect your club streak.",
                     icon = Icons.Rounded.Info,
                     accentColor = semantic.infoCyan,
                     containerColor = semantic.infoCyanContainer

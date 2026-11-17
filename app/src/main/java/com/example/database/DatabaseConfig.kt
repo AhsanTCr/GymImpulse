@@ -1,8 +1,7 @@
 package com.example.database
 
 /**
- * Reserved database configuration and schema contract for Phase 2 implementation.
- * Will back Room local cache and Cloud Firestore / backend sync in Phase 2.
+ * Database collection definitions and contract constants for Gymimpulse.
  */
 object DatabaseConfig {
     const val LOCAL_DB_NAME = "apexpulse_gym.db"
@@ -21,7 +20,7 @@ object DatabaseConfig {
 }
 
 /**
- * Contract for Phase 2 repository wiring and offline-first sync orchestration.
+ * Contract for repository wiring and session cache operations.
  */
 interface GymDatabaseContract {
     suspend fun initializeDatabase()

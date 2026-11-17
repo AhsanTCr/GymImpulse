@@ -185,7 +185,7 @@ fun ApexPulseAppNavHost(
                         ApexPulseLogo(size = 56.dp)
                         CircularProgressIndicator()
                         Text(
-                            text = "Signing into GymPulse...",
+                            text = "Signing into Gymimpulse...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

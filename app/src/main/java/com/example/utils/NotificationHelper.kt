@@ -21,7 +21,7 @@ import com.example.R
 object NotificationHelper {
 
     const val CHANNEL_ID_REMINDERS = "gympulse_reminders"
-    private const val CHANNEL_NAME = "GymPulse Reminders & Club Alerts"
+    private const val CHANNEL_NAME = "Gymimpulse Reminders & Club Alerts"
     private const val CHANNEL_DESC = "Attendance streak nudges, daily protein reminders, and membership expiry alerts."
 
     fun ensureChannels(context: Context) {

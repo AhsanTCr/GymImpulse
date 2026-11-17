@@ -31,8 +31,7 @@ class MockAppUpdateService : AppUpdateService {
 }
 
 /**
- * Central service locator for Phase 1 UI architecture.
- * Ready to be swapped with DI/Room/Cloud implementations in Phase 2.
+ * Central service locator for offline/preview fallback services.
  */
 object ServiceRegistry {
     val authService: AuthService = MockAuthService()

@@ -138,7 +138,7 @@ fun AdminPasscodeGate(
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Rounded.AdminPanelSettings,
-                                contentDescription = "Admin Vault Lock",
+                                contentDescription = "Admin Security Lock",
                                 tint = semantic.warningAmber,
                                 modifier = Modifier.size(28.dp)
                             )
@@ -146,13 +146,13 @@ fun AdminPasscodeGate(
                     }
 
                     Text(
-                        text = "Admin Console Vault",
+                        text = "Staff & Admin Access",
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = "Verified admin: $adminEmail\nEnter the Gymimpulse operations passcode to unlock club management.",
+                        text = "Signed in as: $adminEmail\nEnter the gym operations passcode to access management tools.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -161,7 +161,7 @@ fun AdminPasscodeGate(
                     OutlinedTextField(
                         value = passcodeInput,
                         onValueChange = { passcodeInput = it },
-                        label = { Text("Admin Passcode") },
+                        label = { Text("Security Passcode") },
                         singleLine = true,
                         leadingIcon = {
                             Icon(imageVector = Icons.Rounded.Lock, contentDescription = null)
@@ -206,7 +206,7 @@ fun AdminPasscodeGate(
                             .testTag("admin_passcode_unlock_button")
                     ) {
                         Text(
-                            text = "Unlock Admin Console",
+                            text = "Unlock Management Console",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                         )
                     }

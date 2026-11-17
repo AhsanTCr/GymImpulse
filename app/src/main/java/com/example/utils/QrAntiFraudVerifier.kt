@@ -68,7 +68,7 @@ object QrAntiFraudVerifier {
         val codePart = parts.firstOrNull().orEmpty()
         if (codePart != expectedEntranceCode) {
             return QrVerificationResult.Invalid(
-                "Unrecognized QR code ($codePart). Please scan the official GymPulse entrance QR."
+                "Unrecognized QR code ($codePart). Please scan the official Gymimpulse entrance QR."
             )
         }
 

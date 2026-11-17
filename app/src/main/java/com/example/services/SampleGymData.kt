@@ -28,8 +28,7 @@ import com.example.models.UpdateAvailabilityState
 import com.example.models.UserRole
 
 /**
- * Realistic Phase 1 sample dataset tailored for a commercial 200+ member gym.
- * Replaced by live repository/database calls in Phase 2.
+ * Baseline fallback dataset tailored for a commercial 200+ member gym.
  */
 object SampleGymData {
 

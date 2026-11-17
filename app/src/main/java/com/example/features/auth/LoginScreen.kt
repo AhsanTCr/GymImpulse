@@ -94,7 +94,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(22.dp))
 
-            // Role Selector (Gym Member active; Gym Admin reserved for Phase 3)
+            // Role Selector
             Text(
                 text = "ACCESS ROLE",
                 style = MaterialTheme.typography.labelSmall,
@@ -132,7 +132,7 @@ fun LoginScreen(
                                 else MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = if (role == UserRole.MEMBER) "Phase 2 Live" else "Phase 3 Admin",
+                                text = if (role == UserRole.MEMBER) "Member Portal" else "Management",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -165,14 +165,14 @@ fun LoginScreen(
                         Column {
                             Text(
                                 text = if (state.selectedRole == UserRole.MEMBER)
-                                    "Member Club Sign-In" else "Admin Sign-In (Role-Gated)",
+                                    "Member Sign-In" else "Staff & Admin Sign-In",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = if (state.selectedRole == UserRole.MEMBER)
-                                    "Encrypted persistent session via Google Identity"
-                                else "Admin tools arrive in Phase 3; authorized admins sign in with Google.",
+                                    "Sign in with your Google account to access your gym profile"
+                                else "Authorized gym staff sign in with their registered Google account",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -266,7 +266,7 @@ fun LoginScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "New to GymPulse? ",
+                    text = "New to Gymimpulse? ",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -297,7 +297,7 @@ fun LoginScreen(
             title = { Text("Account Access & Recovery") },
             text = {
                 Text(
-                    text = "GymPulse uses Google Sign-In so you never have to manage a separate gym password. If you cannot access your Google account, recover it via accounts.google.com and sign back in with one tap."
+                    text = "Gymimpulse uses Google Sign-In so you never have to manage a separate gym password. If you cannot access your Google account, recover it via accounts.google.com and sign back in with one tap."
                 )
             },
             confirmButton = {

@@ -260,7 +260,7 @@ fun QrScannerViewfinder(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Allow camera access so GymPulse can scan the single physical QR code posted at the gym entrance.",
+                        text = "Allow camera access so Gymimpulse can scan the physical QR code posted at the gym entrance.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF94A3B8),
                         textAlign = TextAlign.Center

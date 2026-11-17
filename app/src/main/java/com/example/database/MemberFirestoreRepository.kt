@@ -25,7 +25,7 @@ import java.util.Locale
 import java.util.UUID
 
 /**
- * Cloud Firestore repository for GymPulse member features.
+ * Cloud Firestore repository for Gymimpulse member features.
  * Always receives a FirebaseFirestore instance configured with R.string.firestore_database_id.
  */
 class MemberFirestoreRepository(

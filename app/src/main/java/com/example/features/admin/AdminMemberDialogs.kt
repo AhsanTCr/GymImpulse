@@ -315,7 +315,7 @@ fun ConfirmPaymentCycleDialog(
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
                         Text(
-                            text = "ACTIVE CYCLE PREVIEW",
+                            text = "NEW MEMBERSHIP CYCLE",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )

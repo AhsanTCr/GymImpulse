@@ -97,7 +97,7 @@ data class AdminUiState(
         latestVersion = AppConfig.INSTALLED_VERSION,
         releaseDate = "Current Release",
         releaseHighlights = listOf(
-            "Phase 3 Admin Console & Analytics",
+            "Admin Operations & Analytics Console",
             "Live Entrance QR Terminal & Security Monitor",
             "Competition & Member Engagement Sync"
         )
@@ -409,7 +409,7 @@ class AdminViewModel(
         _actionFeedback.value = null
     }
 
-    // --- Module 2: Membership & Payment Mutations ---
+    // --- Membership & Payment Actions ---
 
     fun confirmMemberPayment(
         member: AdminMemberSummary,
@@ -459,7 +459,7 @@ class AdminViewModel(
         }
     }
 
-    // --- Module 3: Competition Control & Referrals ---
+    // --- Competition Control & Referrals ---
 
     fun saveCompetitionConfig(config: CompetitionConfigDoc) {
         runAdminAction(successMessage = "Saved ${config.title} competition settings.") {
@@ -522,7 +522,7 @@ class AdminViewModel(
         }
     }
 
-    // --- Module 4: Announcements, Broadcasts & Promotional Offers ---
+    // --- Announcements, Broadcasts & Promotional Offers ---
 
     fun saveAnnouncementWithOptionalPhoto(
         context: Context,

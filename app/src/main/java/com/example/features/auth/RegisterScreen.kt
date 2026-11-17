@@ -89,7 +89,7 @@ fun RegisterScreen(
         ) {
             ApexSubScreenTopBar(
                 title = if (isAuthenticatedOnboarding) "Complete Member Profile" else "Create Account",
-                subtitle = "Join GymPulse Performance Club",
+                subtitle = "Join Gymimpulse Performance Club",
                 onBackClick = {
                     if (isAuthenticatedOnboarding) {
                         viewModel.signOut(context)
