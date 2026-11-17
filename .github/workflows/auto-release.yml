@@ -22,6 +22,11 @@ on:
           - major
           - none
 
+# Keep release/version operations for a branch from running concurrently.
+concurrency:
+  group: auto-release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -29,18 +34,35 @@ jobs:
   build_and_release:
     name: Bump Version, Build APK & Publish GitHub Release
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip ci]') && !startsWith(github.event.head_commit.message, 'chore(release):')"
+    if: >-
+      github.event_name != 'push' ||
+      (
+        !contains(github.event.head_commit.message, '[skip ci]') &&
+        !startsWith(github.event.head_commit.message, 'chore(release):')
+      )
 
     steps:
-      - name: Checkout repository
+      - name: Checkout latest branch version
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
+
+      - name: Sync with latest branch commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin \
+            "+refs/heads/${GITHUB_REF_NAME}:refs/remotes/origin/${GITHUB_REF_NAME}"
+          git checkout -B "$GITHUB_REF_NAME" "origin/$GITHUB_REF_NAME"
 
       - name: Auto-increment app version
         id: version
+        shell: bash
         run: |
+          set -euo pipefail
+
           if [ -f version.properties ]; then
             CURRENT_CODE=$(grep '^VERSION_CODE=' version.properties | cut -d'=' -f2 | tr -d '[:space:]')
             CURRENT_NAME=$(grep '^VERSION_NAME=' version.properties | cut -d'=' -f2 | tr -d '[:space:]')
@@ -49,96 +71,151 @@ jobs:
             CURRENT_NAME="1.0.0"
           fi
 
-          BUMP="${{ github.event.inputs.bump_type || 'patch' }}"
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_NAME"
-          MAJOR=${MAJOR:-1}
-          MINOR=${MINOR:-0}
-          PATCH=${PATCH:-0}
-
-          if [ "$BUMP" = "none" ]; then
-            NEW_CODE=$CURRENT_CODE
-            NEW_NAME="$MAJOR.$MINOR.$PATCH"
-          else
-            NEW_CODE=$((CURRENT_CODE + 1))
-            case "$BUMP" in
-              major)
-                MAJOR=$((MAJOR + 1))
-                MINOR=0
-                PATCH=0
-                ;;
-              minor)
-                MINOR=$((MINOR + 1))
-                PATCH=0
-                ;;
-              *)
-                PATCH=$((PATCH + 1))
-                ;;
-            esac
-            NEW_NAME="$MAJOR.$MINOR.$PATCH"
+          if [[ ! "$CURRENT_CODE" =~ ^[0-9]+$ ]]; then
+            echo "Invalid VERSION_CODE in version.properties: $CURRENT_CODE"
+            exit 1
           fi
 
-          cat <<EOF > version.properties
+          if [[ ! "$CURRENT_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "VERSION_NAME must use MAJOR.MINOR.PATCH format; got: $CURRENT_NAME"
+            exit 1
+          fi
+
+          BUMP="${{ github.event.inputs.bump_type || 'patch' }}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_NAME"
+
+          case "$BUMP" in
+            none)
+              NEW_CODE=$CURRENT_CODE
+              NEW_NAME="$CURRENT_NAME"
+              ;;
+            major)
+              NEW_CODE=$((CURRENT_CODE + 1))
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              NEW_NAME="$MAJOR.$MINOR.$PATCH"
+              ;;
+            minor)
+              NEW_CODE=$((CURRENT_CODE + 1))
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              NEW_NAME="$MAJOR.$MINOR.$PATCH"
+              ;;
+            patch)
+              NEW_CODE=$((CURRENT_CODE + 1))
+              PATCH=$((PATCH + 1))
+              NEW_NAME="$MAJOR.$MINOR.$PATCH"
+              ;;
+            *)
+              echo "Unsupported bump type: $BUMP"
+              exit 1
+              ;;
+          esac
+
+          cat > version.properties <<EOF
           VERSION_CODE=$NEW_CODE
           VERSION_NAME=$NEW_NAME
           EOF
 
-          echo "NEW_VERSION_CODE=$NEW_CODE" >> "$GITHUB_ENV"
-          echo "NEW_VERSION_NAME=$NEW_NAME" >> "$GITHUB_ENV"
-          echo "RELEASE_TAG=v$NEW_NAME" >> "$GITHUB_ENV"
-          echo "Bumped version: $CURRENT_NAME ($CURRENT_CODE) -> $NEW_NAME ($NEW_CODE)"
+          {
+            echo "NEW_VERSION_CODE=$NEW_CODE"
+            echo "NEW_VERSION_NAME=$NEW_NAME"
+            echo "RELEASE_TAG=v$NEW_NAME"
+          } >> "$GITHUB_ENV"
 
-      - name: Commit bumped version & push tag
-        if: env.NEW_VERSION_NAME != ''
+          echo "Version: $CURRENT_NAME ($CURRENT_CODE) -> $NEW_NAME ($NEW_CODE)"
+
+      - name: Commit and push version bump
+        shell: bash
         run: |
+          set -euo pipefail
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet version.properties; then
+
+          if ! git diff --quiet -- version.properties; then
             git add version.properties
-            git commit -m "chore(release): bump version to v${{ env.NEW_VERSION_NAME }} [skip ci]"
-            git push origin "HEAD:${{ github.ref_name }}"
+            git commit -m "chore(release): bump version to v${NEW_VERSION_NAME} [skip ci]"
+
+            # Rebase the bump commit if the branch advanced while this run
+            # was working, then retry a rejected push.
+            for attempt in 1 2 3; do
+              git fetch origin \
+                "+refs/heads/${GITHUB_REF_NAME}:refs/remotes/origin/${GITHUB_REF_NAME}"
+              git rebase "origin/${GITHUB_REF_NAME}"
+
+              if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+                break
+              fi
+
+              if [ "$attempt" -eq 3 ]; then
+                echo "Could not push the version bump after 3 attempts."
+                exit 1
+              fi
+
+              sleep "$((attempt * 2))"
+            done
           fi
-          if git rev-parse "${{ env.RELEASE_TAG }}" >/dev/null 2>&1; then
-            echo "Tag ${{ env.RELEASE_TAG }} already exists"
-          else
-            git tag "${{ env.RELEASE_TAG }}"
-            git push origin "${{ env.RELEASE_TAG }}"
-          fi
+
+          echo "BUMPED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 9.3.1
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
           cache-read-only: false
 
-      - name: Configure signing keystores & Google services
+      - name: Configure signing and Google services
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          EXPECTED_SIGNING_CERT_SHA256: ${{ vars.EXPECTED_SIGNING_CERT_SHA256 }}
+        shell: bash
         run: |
-          if [ -f debug.keystore.base64 ] && [ ! -f debug.keystore ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-          fi
+          set -euo pipefail
 
           if [ -n "$GOOGLE_SERVICES_JSON" ]; then
-            echo "$GOOGLE_SERVICES_JSON" | base64 -d > app/google-services.json 2>/dev/null || echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            if printf '%s' "$GOOGLE_SERVICES_JSON" | base64 --decode > /tmp/google-services.json 2>/dev/null \
+              && python3 -m json.tool /tmp/google-services.json >/dev/null 2>&1; then
+              cp /tmp/google-services.json app/google-services.json
+            else
+              printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+              if ! python3 -m json.tool app/google-services.json >/dev/null 2>&1; then
+                echo "GOOGLE_SERVICES_JSON is neither valid base64-encoded nor plain JSON."
+                exit 1
+              fi
+            fi
           fi
 
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > my-upload-key.jks
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+
+            if ! keytool -list \
+              -keystore my-upload-key.jks \
+              -storepass "$STORE_PASSWORD" \
+              -alias upload >/dev/null 2>&1; then
+              echo "The configured keystore is invalid or does not contain alias 'upload'."
+              exit 1
+            fi
+
             echo "BUILD_TASK=assembleRelease" >> "$GITHUB_ENV"
-            echo "APK_GLOB=app/build/outputs/apk/release/*.apk" >> "$GITHUB_ENV"
+            echo "APK_DIRECTORY=app/build/outputs/apk/release" >> "$GITHUB_ENV"
+            echo "SIGNING_MODE=release" >> "$GITHUB_ENV"
           else
-            echo "Release keystore secrets not set; falling back to debug-signed APK."
+            echo "Release signing secrets are not all configured."
+            echo "The workflow will build and clearly label a debug-signed APK."
             echo "BUILD_TASK=assembleDebug" >> "$GITHUB_ENV"
-            echo "APK_GLOB=app/build/outputs/apk/debug/*.apk" >> "$GITHUB_ENV"
+            echo "APK_DIRECTORY=app/build/outputs/apk/debug" >> "$GITHUB_ENV"
+            echo "SIGNING_MODE=debug" >> "$GITHUB_ENV"
           fi
 
       - name: Build Gymimpulse APK
@@ -148,28 +225,113 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           APP_VERSION_CODE: ${{ env.NEW_VERSION_CODE }}
           APP_VERSION_NAME: ${{ env.NEW_VERSION_NAME }}
-        run: gradle ${{ env.BUILD_TASK }} --no-daemon
-
-      - name: Package versioned APK artifact
+        shell: bash
         run: |
-          mkdir -p release-artifacts
-          SOURCE_APK=$(ls ${{ env.APK_GLOB }} | head -n 1)
-          if [ -z "$SOURCE_APK" ]; then
-            echo "No APK found matching ${{ env.APK_GLOB }}"
+          set -euo pipefail
+          gradle "$BUILD_TASK" --no-daemon
+
+      - name: Verify and package APK
+        env:
+          EXPECTED_SIGNING_CERT_SHA256: ${{ vars.EXPECTED_SIGNING_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          shopt -s nullglob
+          APK_FILES=("$APK_DIRECTORY"/*.apk)
+
+          if [ "${#APK_FILES[@]}" -eq 0 ]; then
+            echo "No APK found in $APK_DIRECTORY"
             exit 1
           fi
-          TARGET_APK="release-artifacts/Gymimpulse-v${{ env.NEW_VERSION_NAME }}.apk"
+
+          SOURCE_APK="${APK_FILES[0]}"
+          mkdir -p release-artifacts
+
+          APK_FILENAME="Gymimpulse-v${NEW_VERSION_NAME}.apk"
+          TARGET_APK="release-artifacts/$APK_FILENAME"
           cp "$SOURCE_APK" "$TARGET_APK"
-          echo "RELEASE_APK=$TARGET_APK" >> "$GITHUB_ENV"
+
+          APKSIGNER=$(find "${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}/build-tools" \
+            -type f -name apksigner 2>/dev/null | sort -V | tail -n 1 || true)
+
+          if [ -z "$APKSIGNER" ] || [ ! -x "$APKSIGNER" ]; then
+            echo "Could not find Android apksigner to verify the APK."
+            exit 1
+          fi
+
+          CERT_INFO=$("$APKSIGNER" verify --verbose --print-certs "$TARGET_APK")
+          echo "$CERT_INFO"
+
+          CERT_SHA256=$(printf '%s\n' "$CERT_INFO" \
+            | sed -nE 's/.*certificate SHA-256 digest: ([0-9A-Fa-f:]+).*/\1/p' \
+            | head -n 1 \
+            | tr '[:lower:]' '[:upper:]')
+
+          if [ -z "$CERT_SHA256" ]; then
+            echo "Could not read the APK signing certificate SHA-256."
+            exit 1
+          fi
+
+          if [ "$SIGNING_MODE" = "release" ] && [ -n "$EXPECTED_SIGNING_CERT_SHA256" ]; then
+            EXPECTED_NORMALIZED=$(printf '%s' "$EXPECTED_SIGNING_CERT_SHA256" \
+              | tr -d ':' \
+              | tr '[:lower:]' '[:upper:]')
+            ACTUAL_NORMALIZED=$(printf '%s' "$CERT_SHA256" \
+              | tr -d ':' \
+              | tr '[:lower:]' '[:upper:]')
+
+            if [ "$ACTUAL_NORMALIZED" != "$EXPECTED_NORMALIZED" ]; then
+              echo "APK signing certificate does not match EXPECTED_SIGNING_CERT_SHA256."
+              echo "Expected: $EXPECTED_SIGNING_CERT_SHA256"
+              echo "Actual:   $CERT_SHA256"
+              exit 1
+            fi
+          fi
+
+          APK_SHA256=$(sha256sum "$TARGET_APK" | awk '{print $1}')
+
+          {
+            echo "APK_FILENAME=$APK_FILENAME"
+            echo "APK_SHA256=$APK_SHA256"
+            echo "APK_CERT_SHA256=$CERT_SHA256"
+            echo "RELEASE_APK=$TARGET_APK"
+          } >> "$GITHUB_ENV"
+
+          echo "APK: $TARGET_APK"
+          echo "APK SHA-256: $APK_SHA256"
+          echo "Signing certificate SHA-256: $CERT_SHA256"
+          echo "Signing mode: $SIGNING_MODE"
+
+      - name: Create and push release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Tag $RELEASE_TAG already exists; it will not be overwritten."
+          else
+            git tag "$RELEASE_TAG" "$BUMPED_SHA"
+            git push origin "refs/tags/${RELEASE_TAG}"
+          fi
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: Gymimpulse ${{ env.RELEASE_TAG }}
-          generate_release_notes: true
+          target_commitish: ${{ env.BUMPED_SHA }}
+          name: Gymimpulse ${{ env.RELEASE_TAG }} (Build ${{ env.NEW_VERSION_CODE }})
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
           files: ${{ env.RELEASE_APK }}
+          body: |
+            Automated Gymimpulse release ${{ env.RELEASE_TAG }}.
+
+            - Version code: `${{ env.NEW_VERSION_CODE }}`
+            - APK: `${{ env.APK_FILENAME }}`
+            - APK SHA-256: `${{ env.APK_SHA256 }}`
+            - Signing certificate SHA-256: `${{ env.APK_CERT_SHA256 }}`
+            - Signing mode: `${{ env.SIGNING_MODE }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
