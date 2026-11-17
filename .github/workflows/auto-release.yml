@@ -228,7 +228,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gradle "$BUILD_TASK" --no-daemon
+          gradle "$BUILD_TASK" --no-daemon --stacktrace --info
 
       - name: Verify and package APK
         env:
