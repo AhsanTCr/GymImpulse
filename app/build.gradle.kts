@@ -15,18 +15,22 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    val versionPropsFile = rootProject.file("version.properties")
-    val versionProps = Properties()
-    if (versionPropsFile.exists()) {
-      versionPropsFile.inputStream().use { stream -> versionProps.load(stream) }
+    val versionPropsText = providers
+      .fileContents(rootProject.layout.projectDirectory.file("version.properties"))
+      .asText
+      .orNull
+    val versionProps = Properties().apply {
+      if (!versionPropsText.isNullOrBlank()) {
+        load(versionPropsText.reader())
+      }
     }
-    val resolvedVersionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull()
+    val resolvedVersionCode = providers.environmentVariable("APP_VERSION_CODE").orNull?.toIntOrNull()
       ?: versionProps.getProperty("VERSION_CODE")?.toIntOrNull()
       ?: 1
-    val resolvedVersionName = System.getenv("APP_VERSION_NAME")?.takeIf { it.isNotBlank() }
+    val resolvedVersionName = providers.environmentVariable("APP_VERSION_NAME").orNull?.takeIf { it.isNotBlank() }
       ?: versionProps.getProperty("VERSION_NAME")?.takeIf { it.isNotBlank() }
       ?: "1.0.0"
-    val githubRepoSlug = (System.getenv("GITHUB_REPOSITORY") ?: "")
+    val githubRepoSlug = (providers.environmentVariable("GITHUB_REPOSITORY").orNull ?: "")
       .replace("\"", "")
       .trim()
 
