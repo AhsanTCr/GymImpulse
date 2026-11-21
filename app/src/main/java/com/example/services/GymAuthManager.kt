@@ -8,15 +8,14 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import com.example.database.safeFirebaseAuth
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
-import com.google.firebase.auth.auth
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -44,12 +43,22 @@ object GymAuthManager {
             ?.takeIf { it.isNotBlank() }
     }
 
-    fun authStateFlow(auth: FirebaseAuth = Firebase.auth): Flow<FirebaseUser?> = callbackFlow {
+    fun authStateFlow(
+        context: Context? = null,
+        auth: FirebaseAuth? = null
+    ): Flow<FirebaseUser?> = callbackFlow {
+        val resolvedAuth = auth ?: safeFirebaseAuth(context)
+        if (resolvedAuth == null) {
+            trySend(null)
+            awaitClose { }
+            return@callbackFlow
+        }
+        trySend(resolvedAuth.currentUser)
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
             trySend(firebaseAuth.currentUser)
         }
-        auth.addAuthStateListener(listener)
-        awaitClose { auth.removeAuthStateListener(listener) }
+        resolvedAuth.addAuthStateListener(listener)
+        awaitClose { resolvedAuth.removeAuthStateListener(listener) }
     }
 
     /**
@@ -57,9 +66,10 @@ object GymAuthManager {
      */
     suspend fun attemptSilentSignIn(
         context: Context,
-        auth: FirebaseAuth = Firebase.auth
+        auth: FirebaseAuth? = null
     ): Boolean {
-        if (auth.currentUser != null) return true
+        val resolvedAuth = auth ?: safeFirebaseAuth(context) ?: return false
+        if (resolvedAuth.currentUser != null) return true
         val clientId = resolveDefaultWebClientId(context) ?: return false
 
         val googleIdOption = GetGoogleIdOption.Builder()
@@ -79,7 +89,7 @@ object GymAuthManager {
             if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                 val idToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
                 val authCredential = GoogleAuthProvider.getCredential(idToken, null)
-                auth.signInWithCredential(authCredential).await()
+                resolvedAuth.signInWithCredential(authCredential).await()
                 true
             } else {
                 false
@@ -95,8 +105,13 @@ object GymAuthManager {
      */
     suspend fun signInWithGoogleInteractive(
         context: Context,
-        auth: FirebaseAuth = Firebase.auth
+        auth: FirebaseAuth? = null
     ): GoogleSignInOutcome {
+        val resolvedAuth = auth ?: safeFirebaseAuth(context)
+            ?: return GoogleSignInOutcome.Error(
+                "Firebase is not configured for this build. Please add google-services.json."
+            )
+
         val clientId = resolveDefaultWebClientId(context)
             ?: return GoogleSignInOutcome.Error(
                 "Google Sign-In configuration missing (default_web_client_id)."
@@ -118,7 +133,7 @@ object GymAuthManager {
             if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                 val idToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
                 val authCredential = GoogleAuthProvider.getCredential(idToken, null)
-                val authResult = auth.signInWithCredential(authCredential).await()
+                val authResult = resolvedAuth.signInWithCredential(authCredential).await()
                 val user = authResult.user
                     ?: return GoogleSignInOutcome.Error("Authentication completed without a user session.")
                 GoogleSignInOutcome.Success(user)
@@ -136,15 +151,16 @@ object GymAuthManager {
 
     suspend fun signOut(
         context: Context,
-        auth: FirebaseAuth = Firebase.auth
+        auth: FirebaseAuth? = null
     ) {
+        val resolvedAuth = auth ?: safeFirebaseAuth(context)
         withContext(NonCancellable) {
             try {
                 CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to clear credential state: ${e.message}")
             } finally {
-                auth.signOut()
+                resolvedAuth?.signOut()
             }
         }
     }

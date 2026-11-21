@@ -1,12 +1,9 @@
 package com.example.database
 
 import android.content.Context
-import com.example.R
 import com.example.config.AppConfig
 import com.example.utils.DateTimeUtils
-import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.auth
 import com.google.firebase.firestore.DocumentSnapshot.ServerTimestampBehavior
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.snapshots
@@ -26,22 +23,30 @@ import java.util.UUID
  * Cloud Firestore repository for Gymimpulse Admin Console.
  * All reads and writes enforce authenticated admin authorization via firestore.rules
  * and append immutable audit entries to `/admin_audit_logs`.
+ * Gracefully emits empty state if FirebaseApp is not initialized (e.g., missing google-services.json).
  */
 class AdminFirestoreRepository(
-    private val db: FirebaseFirestore,
-    private val auth: FirebaseAuth = Firebase.auth
+    private val db: FirebaseFirestore?,
+    private val auth: FirebaseAuth? = safeFirebaseAuth()
 ) {
     constructor(context: Context) : this(
-        db = FirebaseFirestore.getInstance(
-            context.applicationContext.getString(R.string.firestore_database_id)
-        ),
-        auth = Firebase.auth
+        db = safeFirebaseFirestore(context),
+        auth = safeFirebaseAuth(context)
     )
+
+    val isFirebaseConfigured: Boolean
+        get() = db != null
 
     private val shortDateFormat = SimpleDateFormat("MMM d, yyyy", Locale.US)
 
+    private fun requireDb(): FirebaseFirestore {
+        return db ?: throw IllegalStateException(
+            "Firebase is not configured for this build. Please add google-services.json."
+        )
+    }
+
     private fun requireAdminIdentity(): Pair<String, String> {
-        val user = auth.currentUser
+        val user = auth?.currentUser
             ?: return "test_admin_uid" to "hereyourmax@gmail.com"
         return user.uid to (user.email ?: "admin@gymimpulse.fit")
     }
@@ -64,7 +69,13 @@ class AdminFirestoreRepository(
      * exists OR verified admin email token claim matches backend rules.
      */
     fun observeIsAdminAuthorized(uid: String): Flow<Boolean> = flow {
-        val user = auth.currentUser
+        val firestore = db
+        val firebaseAuth = auth
+        if (firestore == null || firebaseAuth == null) {
+            emit(false)
+            return@flow
+        }
+        val user = firebaseAuth.currentUser
         if (user == null || user.uid != uid) {
             emit(false)
             return@flow
@@ -74,7 +85,7 @@ class AdminFirestoreRepository(
             return@flow
         }
         emitAll(
-            db.collection("admins").document(uid)
+            firestore.collection("admins").document(uid)
                 .snapshots()
                 .map { it.exists() }
                 .catch { emit(false) }
@@ -84,10 +95,11 @@ class AdminFirestoreRepository(
     // --- Club-Wide Admin Observation Streams ---
 
     fun observeAllUsers(): Flow<List<UserProfileDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         val path = "users"
         emitAll(
-            db.collection(path)
+            firestore.collection(path)
                 .snapshots()
                 .map { snap -> snap.toObjects(UserProfileDoc::class.java, ServerTimestampBehavior.ESTIMATE) }
                 .handleAdminErrors(OperationType.LIST, path)
@@ -95,9 +107,10 @@ class AdminFirestoreRepository(
     }
 
     fun observeAllMemberships(): Flow<List<MembershipRecordDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         emitAll(
-            db.collectionGroup("memberships")
+            firestore.collectionGroup("memberships")
                 .snapshots()
                 .map { snap -> snap.toObjects(MembershipRecordDoc::class.java, ServerTimestampBehavior.ESTIMATE) }
                 .handleAdminErrors(OperationType.LIST, "collectionGroup/memberships")
@@ -105,9 +118,10 @@ class AdminFirestoreRepository(
     }
 
     fun observeAllPaymentRequests(): Flow<List<PaymentRequestDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         emitAll(
-            db.collectionGroup("payment_requests")
+            firestore.collectionGroup("payment_requests")
                 .snapshots()
                 .map { snap ->
                     snap.toObjects(PaymentRequestDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -118,9 +132,10 @@ class AdminFirestoreRepository(
     }
 
     fun observeAllPayments(): Flow<List<PaymentRecordDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         emitAll(
-            db.collectionGroup("payments")
+            firestore.collectionGroup("payments")
                 .snapshots()
                 .map { snap ->
                     snap.toObjects(PaymentRecordDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -131,9 +146,10 @@ class AdminFirestoreRepository(
     }
 
     fun observeAllAttendance(): Flow<List<AttendanceRecordDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         emitAll(
-            db.collectionGroup("attendance")
+            firestore.collectionGroup("attendance")
                 .snapshots()
                 .map { snap ->
                     snap.toObjects(AttendanceRecordDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -144,10 +160,11 @@ class AdminFirestoreRepository(
     }
 
     fun observeAllAnnouncements(): Flow<List<AnnouncementDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         val path = "announcements"
         emitAll(
-            db.collection(path)
+            firestore.collection(path)
                 .snapshots()
                 .map { snap ->
                     snap.toObjects(AnnouncementDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -158,10 +175,11 @@ class AdminFirestoreRepository(
     }
 
     fun observeCompetitionConfigs(): Flow<List<CompetitionConfigDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         val path = "competition_configs"
         emitAll(
-            db.collection(path)
+            firestore.collection(path)
                 .snapshots()
                 .map { snap -> snap.toObjects(CompetitionConfigDoc::class.java, ServerTimestampBehavior.ESTIMATE) }
                 .handleAdminErrors(OperationType.LIST, path)
@@ -169,10 +187,11 @@ class AdminFirestoreRepository(
     }
 
     fun observePromotionalOffers(): Flow<List<PromotionalOfferDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         val path = "promotional_offers"
         emitAll(
-            db.collection(path)
+            firestore.collection(path)
                 .snapshots()
                 .map { snap ->
                     snap.toObjects(PromotionalOfferDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -183,10 +202,11 @@ class AdminFirestoreRepository(
     }
 
     fun observeBroadcastNotifications(): Flow<List<BroadcastNotificationDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         val path = "notifications_broadcast"
         emitAll(
-            db.collection(path)
+            firestore.collection(path)
                 .snapshots()
                 .map { snap ->
                     snap.toObjects(BroadcastNotificationDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -197,10 +217,11 @@ class AdminFirestoreRepository(
     }
 
     fun observeAllReferrals(): Flow<List<ReferralRecordDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         val path = "referrals"
         emitAll(
-            db.collection(path)
+            firestore.collection(path)
                 .snapshots()
                 .map { snap ->
                     snap.toObjects(ReferralRecordDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -211,10 +232,11 @@ class AdminFirestoreRepository(
     }
 
     fun observeQrSecurityEvents(): Flow<List<QrSecurityEventDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         val path = "qr_security_events"
         emitAll(
-            db.collection(path)
+            firestore.collection(path)
                 .snapshots()
                 .map { snap ->
                     snap.toObjects(QrSecurityEventDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -225,10 +247,11 @@ class AdminFirestoreRepository(
     }
 
     fun observeAuditLogs(): Flow<List<AdminAuditLogDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         val path = "admin_audit_logs"
         emitAll(
-            db.collection(path)
+            firestore.collection(path)
                 .snapshots()
                 .map { snap ->
                     snap.toObjects(AdminAuditLogDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -239,10 +262,11 @@ class AdminFirestoreRepository(
     }
 
     fun observeLeaderboardStats(): Flow<List<LeaderboardStatDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         val path = "leaderboard_stats"
         emitAll(
-            db.collection(path)
+            firestore.collection(path)
                 .snapshots()
                 .map { snap -> snap.toObjects(LeaderboardStatDoc::class.java, ServerTimestampBehavior.ESTIMATE) }
                 .handleAdminErrors(OperationType.LIST, path)
@@ -250,10 +274,11 @@ class AdminFirestoreRepository(
     }
 
     fun observeLeaderboardHistory(): Flow<List<LeaderboardHistoryDoc>> = flow {
+        val firestore = db ?: run { emit(emptyList()); return@flow }
         requireAdminIdentity()
         val path = "leaderboard_history"
         emitAll(
-            db.collection(path)
+            firestore.collection(path)
                 .snapshots()
                 .map { snap ->
                     snap.toObjects(LeaderboardHistoryDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -264,10 +289,11 @@ class AdminFirestoreRepository(
     }
 
     fun observeGymConfig(): Flow<GymConfigDoc?> = flow {
+        val firestore = db ?: run { emit(null); return@flow }
         requireAdminIdentity()
         val path = "gym_config/main_entrance"
         emitAll(
-            db.collection("gym_config").document("main_entrance")
+            firestore.collection("gym_config").document("main_entrance")
                 .snapshots()
                 .map { snap ->
                     if (snap.exists()) snap.toObject(GymConfigDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -278,10 +304,11 @@ class AdminFirestoreRepository(
     }
 
     fun observeAppConfig(): Flow<AppConfigDoc?> = flow {
+        val firestore = db ?: run { emit(null); return@flow }
         requireAdminIdentity()
         val path = "app_config/current"
         emitAll(
-            db.collection("app_config").document("current")
+            firestore.collection("app_config").document("current")
                 .snapshots()
                 .map { snap ->
                     if (snap.exists()) snap.toObject(AppConfigDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -313,6 +340,7 @@ class AdminFirestoreRepository(
         planName: String = existingMembership?.planName?.ifBlank { AppConfig.DEFAULT_PLAN_NAME }
             ?: AppConfig.DEFAULT_PLAN_NAME
     ) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
         val (cycleStart, cycleEnd) = DateTimeUtils.calculateCycleFromPaymentDate(
             year = paymentYear,
@@ -328,7 +356,7 @@ class AdminFirestoreRepository(
         val formattedAmount = "$" + String.format(Locale.US, "%.2f", amountUsd)
         val cleanRef = referenceNumber.trim().ifBlank { "ADM-${paymentId.takeLast(6).uppercase()}" }
 
-        val userRef = db.collection("users").document(memberUserId)
+        val userRef = firestore.collection("users").document(memberUserId)
         val membershipRef = userRef.collection("memberships").document("current")
         val paymentRef = userRef.collection("payments").document(paymentId)
 
@@ -355,7 +383,7 @@ class AdminFirestoreRepository(
             isVerified = true
         )
 
-        val batch = db.batch()
+        val batch = firestore.batch()
         batch.set(membershipRef, newMembership.toCreateMap())
         batch.set(paymentRef, paymentRecord.toCreateMap())
         if (pendingRequest != null && pendingRequest.id.isNotBlank()) {
@@ -387,8 +415,9 @@ class AdminFirestoreRepository(
         request: PaymentRequestDoc,
         reason: String
     ) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
-        val reqRef = db.collection("users").document(memberUserId)
+        val reqRef = firestore.collection("users").document(memberUserId)
             .collection("payment_requests").document(request.id)
         try {
             reqRef.set(request.toAdminResolutionMap(approved = false)).await()
@@ -414,9 +443,10 @@ class AdminFirestoreRepository(
         existingMembership: MembershipRecordDoc?,
         newStatus: String
     ) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
         val today = shortDateFormat.format(Calendar.getInstance().time)
-        val membershipRef = db.collection("users").document(memberUserId)
+        val membershipRef = firestore.collection("users").document(memberUserId)
             .collection("memberships").document("current")
         val updated = (existingMembership ?: MembershipRecordDoc(
             userId = memberUserId,
@@ -449,9 +479,10 @@ class AdminFirestoreRepository(
     // --- Module 3: Competition Control & Referrals ---
 
     suspend fun saveCompetitionConfig(config: CompetitionConfigDoc) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
         val docId = config.id.ifBlank { config.categoryId.lowercase(Locale.US) }
-        val docRef = db.collection("competition_configs").document(docId)
+        val docRef = firestore.collection("competition_configs").document(docId)
         try {
             docRef.set(config.toWriteMap()).await()
         } catch (e: CancellationException) {
@@ -477,10 +508,11 @@ class AdminFirestoreRepository(
         winnerName: String,
         scoreLabel: String
     ) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
         val historyId = "win_${UUID.randomUUID().toString().replace("-", "").take(10)}"
-        val histRef = db.collection("leaderboard_history").document(historyId)
-        val lbRef = db.collection("leaderboard_stats").document(winnerUserId)
+        val histRef = firestore.collection("leaderboard_history").document(historyId)
+        val lbRef = firestore.collection("leaderboard_stats").document(winnerUserId)
 
         try {
             histRef.set(
@@ -520,8 +552,9 @@ class AdminFirestoreRepository(
         stat: LeaderboardStatDoc,
         reason: String
     ) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
-        val docRef = db.collection("leaderboard_stats").document(stat.userId)
+        val docRef = firestore.collection("leaderboard_stats").document(stat.userId)
         try {
             docRef.set(stat.toAdminWriteMap()).await()
         } catch (e: CancellationException) {
@@ -546,18 +579,19 @@ class AdminFirestoreRepository(
         allUsers: List<UserProfileDoc>,
         allStats: List<LeaderboardStatDoc>
     ) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
         val referrer = allUsers.firstOrNull {
             it.referralCode.equals(referral.referrerCode, ignoreCase = true) ||
                 it.userId == referral.referrerUserId
         }
         val refUid = referrer?.userId?.ifBlank { referrer.id } ?: referral.referrerUserId
-        val docRef = db.collection("referrals").document(referral.id)
+        val docRef = firestore.collection("referrals").document(referral.id)
 
         try {
             docRef.set(referral.toAdminUpdateMap(approved = approved, resolvedReferrerUid = refUid)).await()
             if (approved && !refUid.isNullOrBlank()) {
-                val lbRef = db.collection("leaderboard_stats").document(refUid)
+                val lbRef = firestore.collection("leaderboard_stats").document(refUid)
                 val existing = allStats.firstOrNull { it.userId == refUid }
                 val updatedStat = (existing ?: LeaderboardStatDoc(
                     userId = refUid,
@@ -588,11 +622,12 @@ class AdminFirestoreRepository(
     // --- Module 4: Member Engagement (Announcements, Broadcast Notifications, Offers) ---
 
     suspend fun saveAnnouncement(announcement: AnnouncementDoc) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
         val docId = announcement.id.ifBlank {
             "ann_${UUID.randomUUID().toString().replace("-", "").take(10)}"
         }
-        val docRef = db.collection("announcements").document(docId)
+        val docRef = firestore.collection("announcements").document(docId)
         try {
             docRef.set(announcement.toWriteMap()).await()
         } catch (e: CancellationException) {
@@ -612,8 +647,9 @@ class AdminFirestoreRepository(
     }
 
     suspend fun deleteAnnouncement(announcement: AnnouncementDoc) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
-        val docRef = db.collection("announcements").document(announcement.id)
+        val docRef = firestore.collection("announcements").document(announcement.id)
         try {
             docRef.delete().await()
         } catch (e: CancellationException) {
@@ -633,11 +669,12 @@ class AdminFirestoreRepository(
     }
 
     suspend fun savePromotionalOffer(offer: PromotionalOfferDoc) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
         val docId = offer.id.ifBlank {
             "offer_${UUID.randomUUID().toString().replace("-", "").take(10)}"
         }
-        val docRef = db.collection("promotional_offers").document(docId)
+        val docRef = firestore.collection("promotional_offers").document(docId)
         try {
             docRef.set(offer.toWriteMap()).await()
         } catch (e: CancellationException) {
@@ -657,8 +694,9 @@ class AdminFirestoreRepository(
     }
 
     suspend fun deletePromotionalOffer(offer: PromotionalOfferDoc) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
-        val docRef = db.collection("promotional_offers").document(offer.id)
+        val docRef = firestore.collection("promotional_offers").document(offer.id)
         try {
             docRef.delete().await()
         } catch (e: CancellationException) {
@@ -684,9 +722,10 @@ class AdminFirestoreRepository(
         audience: String,
         isUrgent: Boolean
     ) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
         val docId = "notif_${UUID.randomUUID().toString().replace("-", "").take(10)}"
-        val docRef = db.collection("notifications_broadcast").document(docId)
+        val docRef = firestore.collection("notifications_broadcast").document(docId)
         val payload = BroadcastNotificationDoc(
             id = docId,
             title = title.trim(),
@@ -717,8 +756,9 @@ class AdminFirestoreRepository(
     // --- Common QR Management & Remote App Config ---
 
     suspend fun updateGymQrConfig(config: GymConfigDoc, actionLabel: String) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
-        val docRef = db.collection("gym_config").document("main_entrance")
+        val docRef = firestore.collection("gym_config").document("main_entrance")
         try {
             docRef.set(config.toWriteMap()).await()
         } catch (e: CancellationException) {
@@ -738,8 +778,9 @@ class AdminFirestoreRepository(
     }
 
     suspend fun markQrEventReviewed(event: QrSecurityEventDoc) {
+        val firestore = requireDb()
         requireAdminIdentity()
-        val docRef = db.collection("qr_security_events").document(event.id)
+        val docRef = firestore.collection("qr_security_events").document(event.id)
         try {
             docRef.set(event.toMarkReviewedMap()).await()
         } catch (e: CancellationException) {
@@ -757,8 +798,9 @@ class AdminFirestoreRepository(
         githubRepo: String? = null,
         downloadUrl: String? = null
     ) {
+        val firestore = requireDb()
         val (adminUid, adminEmail) = requireAdminIdentity()
-        val docRef = db.collection("app_config").document("current")
+        val docRef = firestore.collection("app_config").document("current")
         val doc = AppConfigDoc(
             id = "current",
             latestVersion = latestVersion.trim(),
@@ -793,8 +835,9 @@ class AdminFirestoreRepository(
         summary: String,
         details: String?
     ) {
+        val firestore = db ?: return
         val logId = "log_${UUID.randomUUID().toString().replace("-", "").take(12)}"
-        val logRef = db.collection("admin_audit_logs").document(logId)
+        val logRef = firestore.collection("admin_audit_logs").document(logId)
         val payload = AdminAuditLogDoc(
             id = logId,
             adminUserId = adminUid,

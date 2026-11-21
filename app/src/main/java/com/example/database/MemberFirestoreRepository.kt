@@ -1,13 +1,10 @@
 package com.example.database
 
 import android.content.Context
-import com.example.R
 import com.example.config.AppConfig
 import com.example.utils.NutritionAnalyticsEngine
 import com.example.utils.StreakAndLeaderboardEngine
-import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.auth
 import com.google.firebase.firestore.DocumentSnapshot.ServerTimestampBehavior
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -17,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
@@ -26,26 +24,37 @@ import java.util.UUID
 
 /**
  * Cloud Firestore repository for Gymimpulse member features.
- * Always receives a FirebaseFirestore instance configured with R.string.firestore_database_id.
+ * Always receives a FirebaseFirestore instance configured with R.string.firestore_database_id,
+ * or null when FirebaseApp is not initialized (e.g., missing google-services.json).
  */
 class MemberFirestoreRepository(
-    private val db: FirebaseFirestore,
-    private val auth: FirebaseAuth = Firebase.auth
+    private val db: FirebaseFirestore?,
+    private val auth: FirebaseAuth? = safeFirebaseAuth()
 ) {
     constructor(context: Context) : this(
-        db = FirebaseFirestore.getInstance(
-            context.applicationContext.getString(R.string.firestore_database_id)
-        ),
-        auth = Firebase.auth
+        db = safeFirebaseFirestore(context),
+        auth = safeFirebaseAuth(context)
     )
+
+    val isFirebaseConfigured: Boolean
+        get() = db != null
 
     private val dateKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val shortDateFormat = SimpleDateFormat("MMM d, yyyy", Locale.US)
     private val monthKeyFormat = SimpleDateFormat("yyyy-MM", Locale.US)
     private val timeFormat = SimpleDateFormat("hh:mm a", Locale.US)
 
+    private fun requireDb(): FirebaseFirestore {
+        return db ?: throw IllegalStateException(
+            "Firebase is not configured for this build. Please add google-services.json."
+        )
+    }
+
     private fun requireUserId(): String {
-        return auth.currentUser?.uid
+        val currentAuth = auth ?: throw IllegalStateException(
+            "Firebase Authentication is not configured for this build."
+        )
+        return currentAuth.currentUser?.uid
             ?: throw IllegalStateException("User must be signed in with Google before accessing Firestore.")
     }
 
@@ -57,7 +66,7 @@ class MemberFirestoreRepository(
         val fsError = error.findFirestoreException()
         if (fsError == null && error is CancellationException) throw error
         val exceptionToLog = fsError ?: (error as? Exception)
-        if (exceptionToLog != null && (scopedUid == null || auth.currentUser?.uid == scopedUid)) {
+        if (exceptionToLog != null && (scopedUid == null || auth?.currentUser?.uid == scopedUid)) {
             handleFirestoreError(exceptionToLog, operationType, path) { auth }
         }
         throw error
@@ -66,8 +75,9 @@ class MemberFirestoreRepository(
     // --- 1. Member Profile ---
 
     fun observeUserProfile(userId: String): Flow<UserProfileDoc?> {
+        val firestore = db ?: return flowOf(null)
         val path = "users/$userId"
-        return db.collection("users").document(userId)
+        return firestore.collection("users").document(userId)
             .snapshots()
             .map { snapshot ->
                 if (snapshot.exists()) {
@@ -80,7 +90,8 @@ class MemberFirestoreRepository(
     }
 
     suspend fun getUserProfile(userId: String): UserProfileDoc? {
-        val docRef = db.collection("users").document(userId)
+        val firestore = db ?: return null
+        val docRef = firestore.collection("users").document(userId)
         return try {
             val snap = docRef.get().await()
             if (snap.exists()) {
@@ -128,7 +139,8 @@ class MemberFirestoreRepository(
             referredByCode = referredByCode?.trim()?.takeIf { it.isNotBlank() }
         )
 
-        val userRef = db.collection("users").document(uid)
+        val firestore = requireDb()
+        val userRef = firestore.collection("users").document(uid)
         try {
             userRef.set(profile.toCreateMap()).await()
         } catch (e: CancellationException) {
@@ -177,7 +189,7 @@ class MemberFirestoreRepository(
         }
 
         // Initialize non-PII public leaderboard record
-        val lbRef = db.collection("leaderboard_stats").document(uid)
+        val lbRef = firestore.collection("leaderboard_stats").document(uid)
         val existingLb = runCatching { lbRef.get().await() }.getOrNull()
         if (existingLb == null || !existingLb.exists()) {
             val starterLb = LeaderboardStatDoc(
@@ -197,7 +209,7 @@ class MemberFirestoreRepository(
 
         // Record pending referral if user entered a friend's referral code
         if (!profile.referredByCode.isNullOrBlank()) {
-            val referralRef = db.collection("referrals").document("ref_$uid")
+            val referralRef = firestore.collection("referrals").document("ref_$uid")
             val existingRef = runCatching { referralRef.get().await() }.getOrNull()
             if (existingRef == null || !existingRef.exists()) {
                 val referralDoc = ReferralRecordDoc(
@@ -224,8 +236,9 @@ class MemberFirestoreRepository(
         avatarData: String?,
         fitnessGoal: String?
     ) {
+        val firestore = requireDb()
         val uid = requireUserId()
-        val docRef = db.collection("users").document(uid)
+        val docRef = firestore.collection("users").document(uid)
         val updateMap = UserProfileDoc(
             userId = uid,
             fullName = fullName.trim().ifBlank { "Club Member" },
@@ -241,7 +254,7 @@ class MemberFirestoreRepository(
         try {
             docRef.update(updateMap).await()
             // Sync non-PII display name / avatar to leaderboard_stats if it exists
-            val lbRef = db.collection("leaderboard_stats").document(uid)
+            val lbRef = firestore.collection("leaderboard_stats").document(uid)
             val lbSnap = runCatching { lbRef.get().await() }.getOrNull()
             if (lbSnap != null && lbSnap.exists()) {
                 val lbUpdates = buildMap<String, Any> {
@@ -262,8 +275,9 @@ class MemberFirestoreRepository(
     // --- 2. Membership, Payment Requests & Verified Payments ---
 
     fun observeMembership(userId: String): Flow<MembershipRecordDoc?> {
+        val firestore = db ?: return flowOf(null)
         val path = "users/$userId/memberships/current"
-        return db.collection("users").document(userId)
+        return firestore.collection("users").document(userId)
             .collection("memberships").document("current")
             .snapshots()
             .map { snapshot ->
@@ -277,8 +291,9 @@ class MemberFirestoreRepository(
     }
 
     fun observePaymentHistory(userId: String): Flow<List<PaymentRecordDoc>> {
+        val firestore = db ?: return flowOf(emptyList())
         val path = "users/$userId/payments"
-        return db.collection("users").document(userId)
+        return firestore.collection("users").document(userId)
             .collection("payments")
             .snapshots()
             .map { snapshot ->
@@ -289,8 +304,9 @@ class MemberFirestoreRepository(
     }
 
     fun observePaymentRequests(userId: String): Flow<List<PaymentRequestDoc>> {
+        val firestore = db ?: return flowOf(emptyList())
         val path = "users/$userId/payment_requests"
-        return db.collection("users").document(userId)
+        return firestore.collection("users").document(userId)
             .collection("payment_requests")
             .snapshots()
             .map { snapshot ->
@@ -307,9 +323,10 @@ class MemberFirestoreRepository(
         paymentMethod: String,
         referenceNote: String?
     ): String {
+        val firestore = requireDb()
         val uid = requireUserId()
         val requestId = "req_${UUID.randomUUID().toString().replace("-", "").take(12)}"
-        val docRef = db.collection("users").document(uid)
+        val docRef = firestore.collection("users").document(uid)
             .collection("payment_requests").document(requestId)
         val payload = PaymentRequestDoc(
             userId = uid,
@@ -337,8 +354,9 @@ class MemberFirestoreRepository(
     // --- 3. Common Entrance QR Attendance ---
 
     fun observeAttendanceRecords(userId: String): Flow<List<AttendanceRecordDoc>> {
+        val firestore = db ?: return flowOf(emptyList())
         val path = "users/$userId/attendance"
-        return db.collection("users").document(userId)
+        return firestore.collection("users").document(userId)
             .collection("attendance")
             .snapshots()
             .map { snapshot ->
@@ -356,12 +374,13 @@ class MemberFirestoreRepository(
         memberNameForLeaderboard: String,
         avatarDataForLeaderboard: String?
     ): AttendanceRecordDoc {
+        val firestore = requireDb()
         val uid = requireUserId()
         val now = Calendar.getInstance()
         val dateLabel = shortDateFormat.format(now.time)
         val checkInTime = timeFormat.format(now.time)
 
-        val attCollection = db.collection("users").document(uid).collection("attendance")
+        val attCollection = firestore.collection("users").document(uid).collection("attendance")
         val docRef = attCollection.document(dateKey)
 
         // Pre-check to fail cleanly before write if doc already exists for today
@@ -429,7 +448,8 @@ class MemberFirestoreRepository(
         weeklyTargetMetWeeks: Int,
         monthKey: String
     ) {
-        val lbRef = db.collection("leaderboard_stats").document(uid)
+        val firestore = db ?: return
+        val lbRef = firestore.collection("leaderboard_stats").document(uid)
         val snap = runCatching { lbRef.get().await() }.getOrNull()
         if (snap != null && snap.exists()) {
             val existing = snap.toObject(LeaderboardStatDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -486,8 +506,9 @@ class MemberFirestoreRepository(
     // --- 4. Daily Food & Nutrition Logs ---
 
     fun observeFoodLogs(userId: String): Flow<List<DailyFoodLogDoc>> {
+        val firestore = db ?: return flowOf(emptyList())
         val path = "users/$userId/food_logs"
-        return db.collection("users").document(userId)
+        return firestore.collection("users").document(userId)
             .collection("food_logs")
             .snapshots()
             .map { snapshot ->
@@ -504,6 +525,7 @@ class MemberFirestoreRepository(
         allLogsMapForScore: Map<String, DailyFoodLogDoc>,
         memberNameForLeaderboard: String
     ) {
+        val firestore = requireDb()
         val uid = requireUserId()
         val (protein, calories, foodsCount) = NutritionAnalyticsEngine.calculateTotals(servingsByFood)
         val takenIds = servingsByFood.filterValues { it > 0 }.keys.sorted()
@@ -521,7 +543,7 @@ class MemberFirestoreRepository(
             foodsCount = foodsCount.toLong()
         )
 
-        val docRef = db.collection("users").document(uid)
+        val docRef = firestore.collection("users").document(uid)
             .collection("food_logs").document(dateKey)
 
         try {
@@ -536,7 +558,7 @@ class MemberFirestoreRepository(
         // Sync updated healthy habits score to public leaderboard
         val updatedMap = allLogsMapForScore.toMutableMap().apply { put(dateKey, doc) }
         val newHabitsScore = NutritionAnalyticsEngine.calculateHealthyHabitsScore(updatedMap)
-        val lbRef = db.collection("leaderboard_stats").document(uid)
+        val lbRef = firestore.collection("leaderboard_stats").document(uid)
         val lbSnap = runCatching { lbRef.get().await() }.getOrNull()
         if (lbSnap != null && lbSnap.exists()) {
             try {
@@ -571,8 +593,9 @@ class MemberFirestoreRepository(
     // --- 5. Member Notification & Reminder Settings ---
 
     fun observeMemberSettings(userId: String): Flow<MemberSettingsDoc?> {
+        val firestore = db ?: return flowOf(null)
         val path = "users/$userId/settings/notifications"
-        return db.collection("users").document(userId)
+        return firestore.collection("users").document(userId)
             .collection("settings").document("notifications")
             .snapshots()
             .map { snapshot ->
@@ -586,8 +609,9 @@ class MemberFirestoreRepository(
     }
 
     suspend fun saveMemberSettings(settings: MemberSettingsDoc) {
+        val firestore = requireDb()
         val uid = requireUserId()
-        val docRef = db.collection("users").document(uid)
+        val docRef = firestore.collection("users").document(uid)
             .collection("settings").document("notifications")
         val normalized = settings.copy(userId = uid)
         try {
@@ -605,9 +629,13 @@ class MemberFirestoreRepository(
     fun observeLeaderboardStats(): Flow<List<LeaderboardStatDoc>> {
         val path = "leaderboard_stats"
         return flow {
+            val firestore = db ?: run {
+                emit(emptyList())
+                return@flow
+            }
             requireUserId()
             emitAll(
-                db.collection(path)
+                firestore.collection(path)
                     .snapshots()
                     .map { snapshot ->
                         snapshot.toObjects(LeaderboardStatDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -620,9 +648,13 @@ class MemberFirestoreRepository(
     fun observeLeaderboardHistory(): Flow<List<LeaderboardHistoryDoc>> {
         val path = "leaderboard_history"
         return flow {
+            val firestore = db ?: run {
+                emit(emptyList())
+                return@flow
+            }
             requireUserId()
             emitAll(
-                db.collection(path)
+                firestore.collection(path)
                     .snapshots()
                     .map { snapshot ->
                         snapshot.toObjects(LeaderboardHistoryDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -636,9 +668,13 @@ class MemberFirestoreRepository(
     fun observeAnnouncements(): Flow<List<AnnouncementDoc>> {
         val path = "announcements"
         return flow {
+            val firestore = db ?: run {
+                emit(emptyList())
+                return@flow
+            }
             requireUserId()
             emitAll(
-                db.collection(path)
+                firestore.collection(path)
                     .snapshots()
                     .map { snapshot ->
                         snapshot.toObjects(AnnouncementDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -653,9 +689,13 @@ class MemberFirestoreRepository(
     fun observeCompetitionConfigs(): Flow<List<CompetitionConfigDoc>> {
         val path = "competition_configs"
         return flow {
+            val firestore = db ?: run {
+                emit(emptyList())
+                return@flow
+            }
             requireUserId()
             emitAll(
-                db.collection(path)
+                firestore.collection(path)
                     .snapshots()
                     .map { snapshot ->
                         snapshot.toObjects(CompetitionConfigDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -668,9 +708,13 @@ class MemberFirestoreRepository(
     fun observePromotionalOffers(): Flow<List<PromotionalOfferDoc>> {
         val path = "promotional_offers"
         return flow {
+            val firestore = db ?: run {
+                emit(emptyList())
+                return@flow
+            }
             requireUserId()
             emitAll(
-                db.collection(path)
+                firestore.collection(path)
                     .snapshots()
                     .map { snapshot ->
                         snapshot.toObjects(PromotionalOfferDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -685,9 +729,13 @@ class MemberFirestoreRepository(
     fun observeBroadcastNotifications(): Flow<List<BroadcastNotificationDoc>> {
         val path = "notifications_broadcast"
         return flow {
+            val firestore = db ?: run {
+                emit(emptyList())
+                return@flow
+            }
             requireUserId()
             emitAll(
-                db.collection(path)
+                firestore.collection(path)
                     .snapshots()
                     .map { snapshot ->
                         snapshot.toObjects(BroadcastNotificationDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -701,9 +749,13 @@ class MemberFirestoreRepository(
     fun observeGymConfig(): Flow<GymConfigDoc?> {
         val path = "gym_config/main_entrance"
         return flow {
+            val firestore = db ?: run {
+                emit(null)
+                return@flow
+            }
             requireUserId()
             emitAll(
-                db.collection("gym_config").document("main_entrance")
+                firestore.collection("gym_config").document("main_entrance")
                     .snapshots()
                     .map { snap ->
                         if (snap.exists()) snap.toObject(GymConfigDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -717,9 +769,13 @@ class MemberFirestoreRepository(
     fun observeAppConfig(): Flow<AppConfigDoc?> {
         val path = "app_config/current"
         return flow {
+            val firestore = db ?: run {
+                emit(null)
+                return@flow
+            }
             requireUserId()
             emitAll(
-                db.collection("app_config").document("current")
+                firestore.collection("app_config").document("current")
                     .snapshots()
                     .map { snap ->
                         if (snap.exists()) snap.toObject(AppConfigDoc::class.java, ServerTimestampBehavior.ESTIMATE)
@@ -738,9 +794,10 @@ class MemberFirestoreRepository(
         rawCodePrefix: String?,
         distanceMeters: Double?
     ) {
-        val uid = auth.currentUser?.uid ?: return
+        val firestore = db ?: return
+        val uid = auth?.currentUser?.uid ?: return
         val eventId = "qre_${UUID.randomUUID().toString().replace("-", "").take(12)}"
-        val docRef = db.collection("qr_security_events").document(eventId)
+        val docRef = firestore.collection("qr_security_events").document(eventId)
         val payload = QrSecurityEventDoc(
             id = eventId,
             userId = uid,
@@ -756,8 +813,9 @@ class MemberFirestoreRepository(
     }
 
     fun observeMyReferrals(userId: String): Flow<List<ReferralRecordDoc>> {
+        val firestore = db ?: return flowOf(emptyList())
         val path = "referrals"
-        return db.collection(path)
+        return firestore.collection(path)
             .whereEqualTo("referrerUserId", userId)
             .snapshots()
             .map { snapshot ->
@@ -767,8 +825,9 @@ class MemberFirestoreRepository(
     }
 
     suspend fun getGymConfig(): GymConfigDoc? {
+        val firestore = db ?: return null
         requireUserId()
-        val docRef = db.collection("gym_config").document("main_entrance")
+        val docRef = firestore.collection("gym_config").document("main_entrance")
         return try {
             val snap = docRef.get().await()
             if (snap.exists()) snap.toObject(GymConfigDoc::class.java) else null
@@ -784,8 +843,9 @@ class MemberFirestoreRepository(
     }
 
     suspend fun getAppConfig(): AppConfigDoc? {
+        val firestore = db ?: return null
         requireUserId()
-        val docRef = db.collection("app_config").document("current")
+        val docRef = firestore.collection("app_config").document("current")
         return try {
             val snap = docRef.get().await()
             if (snap.exists()) snap.toObject(AppConfigDoc::class.java) else null

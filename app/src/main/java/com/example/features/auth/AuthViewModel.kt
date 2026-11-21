@@ -4,14 +4,13 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.database.MemberFirestoreRepository
+import com.example.database.safeFirebaseAuth
 import com.example.database.toFriendlyFirestoreMessage
 import com.example.models.UserRole
 import com.example.services.GoogleSignInOutcome
 import com.example.services.GymAuthManager
 import com.example.utils.ImageCompressionUtils
 import com.example.utils.ValidationUtils
-import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -130,9 +129,20 @@ class AuthViewModel(
         _registerState.update { it.copy(isSubmitting = true, errorMessage = null) }
         viewModelScope.launch {
             try {
+                val firebaseAuth = safeFirebaseAuth(context)
+                if (firebaseAuth == null) {
+                    _registerState.update {
+                        it.copy(
+                            isSubmitting = false,
+                            errorMessage = "Firebase is not configured for this build. Please add google-services.json."
+                        )
+                    }
+                    return@launch
+                }
+
                 // Ensure Google Sign-In completed first
-                if (Firebase.auth.currentUser == null) {
-                    when (val outcome = GymAuthManager.signInWithGoogleInteractive(context)) {
+                if (firebaseAuth.currentUser == null) {
+                    when (val outcome = GymAuthManager.signInWithGoogleInteractive(context, firebaseAuth)) {
                         is GoogleSignInOutcome.Success -> {
                             _registerState.update {
                                 it.copy(
@@ -154,7 +164,7 @@ class AuthViewModel(
                     }
                 }
 
-                val currentUser = Firebase.auth.currentUser
+                val currentUser = firebaseAuth.currentUser
                 if (currentUser == null) {
                     _registerState.update { it.copy(isSubmitting = false, errorMessage = "Authentication required.") }
                     return@launch

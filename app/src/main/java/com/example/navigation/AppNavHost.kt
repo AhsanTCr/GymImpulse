@@ -42,6 +42,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.database.AdminFirestoreRepository
 import com.example.database.MemberFirestoreRepository
 import com.example.database.UserProfileDoc
+import com.example.database.safeFirebaseAuth
 import com.example.database.toFriendlyFirestoreMessage
 import com.example.features.admin.AdminPasscodeGate
 import com.example.features.admin.AdminPortalRootScreen
@@ -69,8 +70,6 @@ import com.example.features.splash.SplashScreen
 import com.example.services.GymAuthManager
 import com.example.ui.components.ApexPulseLogo
 import com.example.ui.theme.AppThemeMode
-import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
@@ -92,12 +91,14 @@ fun ApexPulseAppNavHost(
     val adminRepository = remember(appContext) { AdminFirestoreRepository(appContext) }
 
     var splashFinished by remember { mutableStateOf(false) }
-    val firebaseUser by GymAuthManager.authStateFlow()
-        .collectAsStateWithLifecycle(initialValue = Firebase.auth.currentUser)
+    val initialUser = remember(appContext) { safeFirebaseAuth(appContext)?.currentUser }
+    val firebaseUser by remember(appContext) {
+        GymAuthManager.authStateFlow(context = appContext)
+    }.collectAsStateWithLifecycle(initialValue = initialUser)
 
     // Attempt Credential Manager silent auto-sign-in once during app startup
-    LaunchedEffect(Unit) {
-        if (Firebase.auth.currentUser == null) {
+    LaunchedEffect(appContext) {
+        if (safeFirebaseAuth(appContext)?.currentUser == null) {
             GymAuthManager.attemptSilentSignIn(context)
         }
     }
