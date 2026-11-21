@@ -8,7 +8,6 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import com.example.R
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -33,6 +32,18 @@ object GymAuthManager {
 
     private const val TAG = "GymAuthManager"
 
+    private fun resolveDefaultWebClientId(context: Context): String? {
+        val resId = context.resources.getIdentifier(
+            "default_web_client_id",
+            "string",
+            context.packageName
+        )
+        if (resId == 0) return null
+        return runCatching { context.getString(resId) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
+
     fun authStateFlow(auth: FirebaseAuth = Firebase.auth): Flow<FirebaseUser?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
             trySend(firebaseAuth.currentUser)
@@ -49,8 +60,7 @@ object GymAuthManager {
         auth: FirebaseAuth = Firebase.auth
     ): Boolean {
         if (auth.currentUser != null) return true
-        val clientId = runCatching { context.getString(R.string.default_web_client_id) }.getOrNull()
-        if (clientId.isNullOrBlank()) return false
+        val clientId = resolveDefaultWebClientId(context) ?: return false
 
         val googleIdOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(true)
@@ -87,13 +97,10 @@ object GymAuthManager {
         context: Context,
         auth: FirebaseAuth = Firebase.auth
     ): GoogleSignInOutcome {
-        val clientId = try {
-            context.getString(R.string.default_web_client_id)
-        } catch (e: Exception) {
-            return GoogleSignInOutcome.Error(
+        val clientId = resolveDefaultWebClientId(context)
+            ?: return GoogleSignInOutcome.Error(
                 "Google Sign-In configuration missing (default_web_client_id)."
             )
-        }
 
         val activityContext = context as? Activity ?: return GoogleSignInOutcome.Error(
             "Unable to launch Google Sign-In sheet from this context."
