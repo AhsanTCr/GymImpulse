@@ -16,12 +16,16 @@ private const val FIREBASE_SAFE_TAG = "FirebaseSafeProvider"
  * `google-services.json` was absent at build time and `FirebaseInitProvider` did not run).
  */
 fun isFirebaseInitialized(context: Context? = null): Boolean {
-    return if (context != null) {
-        runCatching { FirebaseApp.getApps(context.applicationContext).isNotEmpty() }
+    if (context != null) {
+        val appContext = context.applicationContext
+        val hasExistingApp = runCatching {
+            FirebaseApp.getApps(appContext).isNotEmpty()
+        }.getOrDefault(false)
+        if (hasExistingApp) return true
+        return runCatching { FirebaseApp.initializeApp(appContext) != null }
             .getOrDefault(false)
-    } else {
-        runCatching { FirebaseApp.getInstance() }.isSuccess
     }
+    return runCatching { FirebaseApp.getInstance() }.isSuccess
 }
 
 /**
