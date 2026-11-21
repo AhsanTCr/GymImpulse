@@ -94,5 +94,6 @@ data class AdminModuleCardModel(
     val id: String,
     val title: String,
     val subtitle: String,
+    val targetPhase: String = "Active",
     val isEnabled: Boolean = true
 )
