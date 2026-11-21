@@ -49,12 +49,11 @@ jobs:
             fi
           fi
 
-      - name: Build APK with Gradle Wrapper
+      - name: Build APK with Gradle
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
